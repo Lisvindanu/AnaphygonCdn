@@ -5,6 +5,14 @@ let currentUser = JSON.parse(localStorage.getItem('cdnUser')) || null;
 
 // Initialize the application state
 function initializeApp() {
+    const mainNav = document.getElementById('main-nav');
+    const authNav = document.getElementById('auth-nav');
+    const mobileToggle = document.getElementById('mobile-toggle');
+    
+    // Reset mobile expanded state
+    mainNav.classList.remove('mobile-expanded');
+    authNav.classList.remove('mobile-expanded');
+    
     if (token && currentUser) {
         document.getElementById('auth-nav').classList.add('hidden');
         document.getElementById('main-nav').classList.remove('hidden');

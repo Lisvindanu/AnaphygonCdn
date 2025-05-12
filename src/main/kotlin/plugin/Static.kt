@@ -14,9 +14,11 @@ fun Application.configureStatic() {
     val uploadsDir = "uploads"
     File(uploadsDir).mkdirs()
 
-    // Create static directory if it doesn't exist
-    val staticDir = "static"
-    File(staticDir).mkdirs()
+    // Ensure styles and scripts directories exist
+    val stylesDir = "styles"
+    val scriptsDir = "scripts"
+    File(stylesDir).mkdirs()
+    File(scriptsDir).mkdirs()
 
     // Add interceptor for adding cache headers
     intercept(ApplicationCallPipeline.Plugins) {
@@ -46,10 +48,14 @@ fun Application.configureStatic() {
             call.respondFile(File("index.html"))
         }
 
-        // Static resources
-        static("/static") {
-            staticBasePackage = "static"
-            resources(".")
+        // Serve static resources from styles directory
+        static("/styles") {
+            files(stylesDir)
+        }
+
+        // Serve static resources from scripts directory
+        static("/scripts") {
+            files(scriptsDir)
         }
 
         // Serve files directly from the uploads directory

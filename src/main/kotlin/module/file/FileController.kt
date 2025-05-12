@@ -126,17 +126,22 @@ class FileController(private val fileService: FileService) {
         }
     }
 
+    // Modify the getFile method in FileController.kt
     suspend fun getFile(call: ApplicationCall) {
         val fileId = call.parameters["id"] ?: return call.respond(HttpStatusCode.BadRequest, ResponseWrapper.error("File ID required"))
+        val forceDownload = call.request.queryParameters["download"]?.toBoolean() ?: false
 
         try {
             val file = fileService.getFile(fileId)
             if (file != null) {
-                // Set content disposition header
-                call.response.header(
-                    HttpHeaders.ContentDisposition,
-                    ContentDisposition.Inline.withParameter(ContentDisposition.Parameters.FileName, file.fileName).toString()
-                )
+                // Set content disposition header based on download parameter
+                val contentDisposition = if (forceDownload) {
+                    ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, file.fileName)
+                } else {
+                    ContentDisposition.Inline.withParameter(ContentDisposition.Parameters.FileName, file.fileName)
+                }
+
+                call.response.header(HttpHeaders.ContentDisposition, contentDisposition.toString())
 
                 // Set caching headers based on content type
                 val contentType = getContentTypeFromFileName(file.fileName)

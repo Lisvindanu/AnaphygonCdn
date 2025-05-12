@@ -163,6 +163,122 @@ async function loadFiles() {
     }
 }
 
+function viewFile(fileId, fileName) {
+    window.open(`http://localhost:8080/api/files/${fileId}`, '_blank');
+}
+
+function downloadFile(fileId, fileName) {
+    // Create a download URL with the download parameter set to true
+    const downloadUrl = `http://localhost:8080/api/files/${fileId}?download=true`;
+
+    // Create a temporary link element
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = fileName; // Set suggested filename
+
+    // Add to document, click it, and remove it
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+
+// Add this function to files.js
+
+// Create a shareable download link
+function createShareableLink(fileId, fileName) {
+    const fileUrl = `http://localhost:8080/api/files/${fileId}`;
+    const downloadUrl = `http://localhost:8080/api/files/${fileId}?download=true`;
+
+    // Create modal content with shareable links
+    const modalContent = `
+        <h3>Shareable Links for "${fileName}"</h3>
+        <div class="share-links">
+            <div class="share-link-item">
+                <h4><i class="fas fa-eye"></i> View Link</h4>
+                <div class="link-container">
+                    <input type="text" value="${fileUrl}" readonly class="link-input" id="view-link">
+                    <button onclick="copyToClipboard('view-link')" class="btn-secondary">
+                        <i class="fas fa-copy"></i> Copy
+                    </button>
+                </div>
+            </div>
+            
+            <div class="share-link-item">
+                <h4><i class="fas fa-download"></i> Download Link</h4>
+                <div class="link-container">
+                    <input type="text" value="${downloadUrl}" readonly class="link-input" id="download-link">
+                    <button onclick="copyToClipboard('download-link')" class="btn-secondary">
+                        <i class="fas fa-copy"></i> Copy
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Show the modal
+    showModal(modalContent);
+
+    // Add styles for the share links
+    const styleElement = document.createElement('style');
+    styleElement.textContent = `
+        .share-links {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .share-link-item {
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            padding: 15px;
+            background-color: #f8f9fa;
+        }
+        
+        .share-link-item h4 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+        
+        .link-container {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .link-input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            font-size: 0.9rem;
+        }
+    `;
+    document.head.appendChild(styleElement);
+}
+
+// Function to copy text to clipboard
+function copyToClipboard(elementId) {
+    const copyText = document.getElementById(elementId);
+    copyText.select();
+    copyText.setSelectionRange(0, 99999); // For mobile devices
+
+    navigator.clipboard.writeText(copyText.value)
+        .then(() => {
+            // Visual feedback on successful copy
+            const originalText = copyText.nextElementSibling.innerHTML;
+            copyText.nextElementSibling.innerHTML = '<i class="fas fa-check"></i> Copied!';
+
+            setTimeout(() => {
+                copyText.nextElementSibling.innerHTML = originalText;
+            }, 2000);
+        })
+        .catch(err => {
+            console.error('Failed to copy: ', err);
+            alert('Failed to copy the link. Please try again.');
+        });
+}
+
 // Display files
 function displayFiles(files) {
     console.log("displayFiles received:", files);
@@ -237,7 +353,7 @@ function displayFiles(files) {
         <div class="file-details">
           <h3>${file.fileName}</h3>`;
 
-        // If admin, show the username if available, otherwise show user ID
+        // If admin, show the username if available
         if (isAdmin && file.userId) {
             const displayName = file.username || `User ID: ${file.userId}`;
             html += `<p>Uploaded by: <span class="file-owner">${displayName}</span></p>`;
@@ -250,8 +366,14 @@ function displayFiles(files) {
           <p>Uploaded: ${formatDate(file.uploadDate || Date.now())}</p>
         </div>
         <div class="file-actions">
-          <button onclick="window.open('http://localhost:8080/api/files/${file.id}', '_blank')" class="btn-primary">
+          <button onclick="viewFile('${file.id}', '${file.fileName}')" class="btn-primary">
+            <i class="fas fa-eye"></i> View
+          </button>
+          <button onclick="downloadFile('${file.id}', '${file.fileName}')" class="btn-primary">
             <i class="fas fa-download"></i> Download
+          </button>
+          <button onclick="createShareableLink('${file.id}', '${file.fileName}')" class="btn-secondary">
+            <i class="fas fa-share-alt"></i> Share
           </button>
           ${isImage ? `
             <button onclick="window.open('http://localhost:8080/api/files/${file.id}/thumbnail', '_blank')" class="btn-secondary">
@@ -262,8 +384,7 @@ function displayFiles(files) {
             <i class="fas fa-trash"></i> Delete
           </button>
         </div>
-      </div>
-    `;
+      </div>`;
     });
 
     if (html === '') {

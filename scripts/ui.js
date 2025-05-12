@@ -117,10 +117,39 @@ function formatDate(timestamp) {
     return new Date(timestamp).toLocaleString();
 }
 
+// Mobile navigation toggle
+function setupMobileNavigation() {
+    const mobileToggle = document.getElementById('mobile-toggle');
+    const mainNav = document.getElementById('main-nav');
+    const authNav = document.getElementById('auth-nav');
+    
+    if (mobileToggle) {
+        mobileToggle.addEventListener('click', function() {
+            // Toggle current active navigation
+            if (!mainNav.classList.contains('hidden')) {
+                mainNav.classList.toggle('mobile-expanded');
+            } else if (!authNav.classList.contains('hidden')) {
+                authNav.classList.toggle('mobile-expanded');
+            }
+        });
+        
+        // Close mobile menu after clicking a link
+        document.querySelectorAll('.navbar a').forEach(link => {
+            link.addEventListener('click', function() {
+                mainNav.classList.remove('mobile-expanded');
+                authNav.classList.remove('mobile-expanded');
+            });
+        });
+    }
+}
+
 // Setup file drop area functionality
 document.addEventListener('DOMContentLoaded', function() {
     const fileDropArea = document.querySelector('.file-drop-area');
     const fileInput = document.getElementById('file-input');
+
+    // Setup mobile navigation
+    setupMobileNavigation();
 
     if (fileDropArea && fileInput) {
         // File input change event

@@ -13,8 +13,11 @@
 <div class="app-container">
   <header>
     <div class="logo">
-      <i class="fas fa-cloud"></i>
+      <i class="fas fa-cloud-upload-alt"></i>
       <h1>Anaphygon CDN</h1>
+      <button id="mobile-toggle" class="menu-toggle">
+        <i class="fas fa-bars"></i>
+      </button>
     </div>
 
     <nav class="navbar hidden" id="main-nav">
@@ -26,8 +29,8 @@
     </nav>
 
     <nav class="navbar" id="auth-nav">
-      <a href="#" onclick="showSection('login-section')" id="nav-login" class="active">Login</a>
-      <a href="#" onclick="showSection('register-section')" id="nav-register">Register</a>
+      <a href="#" onclick="showSection('login-section')" id="nav-login" class="active"><i class="fas fa-sign-in-alt"></i> Login</a>
+      <a href="#" onclick="showSection('register-section')" id="nav-register"><i class="fas fa-user-plus"></i> Register</a>
     </nav>
   </header>
 

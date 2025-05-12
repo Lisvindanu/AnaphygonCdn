@@ -5,12 +5,13 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0,0,0,0.5);
+    background-color: rgba(0,0,0,0.6);
     display: flex;
     justify-content: center;
     align-items: center;
     z-index: 1000;
     animation: fadeIn 0.3s ease;
+    padding: 20px;
 }
 
 .modal-content {
@@ -22,7 +23,7 @@
     max-height: 90vh;
     overflow-y: auto;
     position: relative;
-    box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
     animation: slideUp 0.3s ease;
 }
 
@@ -34,17 +35,18 @@
     cursor: pointer;
     color: var(--secondary-color);
     transition: var(--transition);
-    width: 30px;
-    height: 30px;
+    width: 36px;
+    height: 36px;
     display: flex;
     align-items: center;
     justify-content: center;
     border-radius: 50%;
+    background-color: #f0f2f5;
 }
 
 .close-button:hover {
     color: var(--primary-color);
-    background-color: rgba(0,0,0,0.1);
+    background-color: rgba(67, 97, 238, 0.1);
 }
 
 @keyframes fadeIn {
@@ -61,14 +63,14 @@
 .modal .files-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 15px;
-    margin-top: 20px;
+    gap: 20px;
+    margin-top: 25px;
 }
 
 .modal .file-item {
     background-color: #f9f9f9;
     border-radius: var(--border-radius);
-    padding: 15px;
+    padding: 20px;
     transition: var(--transition);
     border: 1px solid var(--border-color);
     display: flex;
@@ -77,22 +79,140 @@
 
 .modal .file-item:hover {
     transform: translateY(-3px);
-    box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+    box-shadow: var(--card-shadow);
 }
 
-.modal .file-item img {
-    width: 100%;
+.modal .file-preview {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: #f0f2f5;
+    border-radius: var(--border-radius);
+    overflow: hidden;
     height: 120px;
-    object-fit: cover;
-    border-radius: 4px;
-    margin-bottom: 10px;
+    margin-bottom: 15px;
+}
+
+.modal .file-preview img {
+    max-width: 100%;
+    max-height: 120px;
+    object-fit: contain;
 }
 
 .modal .file-details {
-    font-size: 0.875rem;
+    font-size: 0.9rem;
+}
+
+.modal .file-details p {
+    margin: 5px 0;
+    color: var(--secondary-color);
+}
+
+.modal .file-details p strong {
+    color: var(--dark-bg);
 }
 
 .modal .file-actions {
     margin-top: auto;
-    padding-top: 10px;
+    padding-top: 15px;
+}
+
+/* Share links */
+.share-links {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    margin-top: 25px;
+}
+
+.share-link-item {
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 20px;
+    background-color: #f8f9fa;
+}
+
+.share-link-item h4 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.share-link-item h4 i {
+    color: var(--primary-color);
+}
+
+.link-container {
+    display: flex;
+    gap: 10px;
+}
+
+.link-input {
+    flex: 1;
+    padding: 12px 15px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    font-size: 0.9rem;
+    background-color: white;
+}
+
+/* User stats in modals */
+.user-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 15px;
+    margin: 20px 0;
+}
+
+.user-stats div {
+    background-color: white;
+    padding: 15px;
+    border-radius: var(--border-radius);
+    text-align: center;
+    border: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.user-stats div i {
+    font-size: 1.5rem;
+    color: var(--primary-color);
+    margin-bottom: 10px;
+}
+
+.user-stats div p {
+    margin: 0;
+    color: var(--secondary-color);
+    font-size: 0.9rem;
+}
+
+.user-stats div p strong {
+    display: block;
+    margin-top: 5px;
+    font-size: 1.1rem;
+    color: var(--dark-bg);
+}
+
+/* Responsive adjustments */
+@media (max-width: 576px) {
+    .modal-content {
+        padding: 20px;
+        width: 95%;
+    }
+
+    .link-container {
+        flex-direction: column;
+    }
+
+    .modal .files-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .user-stats {
+        grid-template-columns: 1fr 1fr;
+    }
 }
