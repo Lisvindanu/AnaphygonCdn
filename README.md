@@ -1,48 +1,133 @@
-# cdn
+# Anaphygon CDN
 
-This project was created using the [Ktor Project Generator](https://start.ktor.io).
+A personal content delivery network service built with Ktor in Kotlin.
 
-Here are some useful links to get you started:
+## Overview
 
-- [Ktor Documentation](https://ktor.io/docs/home.html)
-- [Ktor GitHub page](https://github.com/ktorio/ktor)
-- The [Ktor Slack chat](https://app.slack.com/client/T09229ZC6/C0A974TJ9). You'll need to [request an invite](https://surveys.jetbrains.com/s3/kotlin-slack-sign-up) to join.
+This CDN provides a secure, efficient, and scalable solution for file storage and delivery. It supports various file types including images, documents, audio, and video files with on-demand transformations for image assets.
 
-## Features
+## Key Features
 
-Here's a list of features included in this project:
+<details>
+<summary><strong>File Management</strong></summary>
 
-| Name                                                                   | Description                                                                        |
-| ------------------------------------------------------------------------|------------------------------------------------------------------------------------ |
-| [Routing](https://start.ktor.io/p/routing)                             | Provides a structured routing DSL                                                  |
-| [Micrometer Metrics](https://start.ktor.io/p/metrics-micrometer)       | Enables Micrometer metrics in your Ktor server application.                        |
-| [kotlinx.serialization](https://start.ktor.io/p/kotlinx-serialization) | Handles JSON serialization using kotlinx.serialization library                     |
-| [Content Negotiation](https://start.ktor.io/p/content-negotiation)     | Provides automatic content conversion according to Content-Type and Accept headers |
-| [Exposed](https://start.ktor.io/p/exposed)                             | Adds Exposed database to your application                                          |
-| [Status Pages](https://start.ktor.io/p/status-pages)                   | Provides exception handling for routes                                             |
-| [Resources](https://start.ktor.io/p/resources)                         | Provides type-safe routing                                                         |
-| [Default Headers](https://start.ktor.io/p/default-headers)             | Adds a default set of headers to HTTP responses                                    |
-| [Call Logging](https://start.ktor.io/p/call-logging)                   | Logs client requests                                                               |
-| [CORS](https://start.ktor.io/p/cors)                                   | Enables Cross-Origin Resource Sharing (CORS)                                       |
+- File upload with validation
+- Secure file storage
+- File retrieval with efficient caching
+- File metadata management
+- File deletion
+</details>
 
-## Building & Running
+<details>
+<summary><strong>Image Processing</strong></summary>
 
-To build or run the project, use one of the following tasks:
+- On-demand image resizing
+- Thumbnail generation
+- Format conversion
+</details>
 
-| Task                          | Description                                                          |
-| -------------------------------|---------------------------------------------------------------------- |
-| `./gradlew test`              | Run the tests                                                        |
-| `./gradlew build`             | Build everything                                                     |
-| `buildFatJar`                 | Build an executable JAR of the server with all dependencies included |
-| `buildImage`                  | Build the docker image to use with the fat JAR                       |
-| `publishImageToLocalRegistry` | Publish the docker image locally                                     |
-| `run`                         | Run the server                                                       |
-| `runDocker`                   | Run using the local docker image                                     |
+<details>
+<summary><strong>Security</strong></summary>
 
-If the server starts successfully, you'll see the following output:
+- JWT-based authentication
+- CSRF protection
+- Rate limiting to prevent abuse
+- File type validation
+</details>
 
-```
-2024-12-04 14:32:45.584 [main] INFO  Application - Application started in 0.303 seconds.
-2024-12-04 14:32:45.682 [main] INFO  Application - Responding at http://0.0.0.0:8080
-```
+<details>
+<summary><strong>Monitoring</strong></summary>
 
+- Comprehensive metrics collection
+- Storage usage analytics
+- Performance monitoring
+- Request logging
+</details>
+
+<details>
+<summary><strong>Performance Optimizations</strong></summary>
+
+- Response caching
+- Efficient file handling
+- Proper HTTP headers for browser caching
+</details>
+
+<details>
+<summary><strong>Database Integration</strong></summary>
+
+- H2 database for metadata storage
+- Clean separation of data and storage layers
+</details>
+
+<details>
+<summary><strong>Other Features</strong></summary>
+
+- CORS support for cross-origin requests
+- Error handling with status pages
+- Background cleanup job for removing orphaned files
+</details>
+
+## Architecture
+
+<details>
+<summary><strong>Click to expand</strong></summary>
+
+The project follows a modular architecture:
+- Routing layer for request handling
+- Controller layer for business logic
+- Service layer for file operations
+- Database layer for metadata storage
+- Utility classes for common operations
+</details>
+
+## Tech Stack
+
+<details>
+<summary><strong>Click to expand</strong></summary>
+
+- **Framework**: Ktor
+- **Language**: Kotlin
+- **Database**: H2
+- **Authentication**: JWT
+- **ORM**: Exposed
+- **Build Tool**: Gradle
+</details>
+
+## API Endpoints
+
+<details>
+<summary><strong>File Operations</strong></summary>
+
+- `GET /api/files/{id}` - Retrieve a file
+- `GET /api/files/{id}/thumbnail` - Get file thumbnail
+- `GET /api/files/{id}/resize` - Resize an image
+- `GET /api/files/{id}/info` - Get file metadata
+- `POST /api/files` - Upload a file
+- `DELETE /api/files/{id}` - Delete a file
+</details>
+
+<details>
+<summary><strong>Authentication</strong></summary>
+
+- `POST /api/auth/register` - Register a new user
+- `POST /api/auth/login` - Login to the system
+- `GET /api/auth/csrf` - Get CSRF token
+</details>
+
+<details>
+<summary><strong>Monitoring</strong></summary>
+
+- `GET /metrics-micrometer` - Prometheus metrics
+- `GET /api/metrics/storage` - Storage usage metrics
+</details>
+
+## Client Interface
+
+<details>
+<summary><strong>Click to expand</strong></summary>
+
+The project includes an HTML/JS client interface for:
+- User registration and login
+- File upload and management
+- File viewing and downloading
+</details>
