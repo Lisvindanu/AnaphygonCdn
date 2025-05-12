@@ -22,7 +22,9 @@ class CsrfProtection {
         var excludedPaths: List<String> = listOf(
             "/api/auth/login",
             "/api/auth/register",
-            "/api/auth/csrf"
+            "/api/auth/csrf",
+            "/api/files",  // Allow file operations without CSRF
+            "/cdn"  // Allow CDN access without CSRF
         )
     }
 
@@ -33,59 +35,55 @@ class CsrfProtection {
             val configuration = Configuration().apply(configure)
             val plugin = CsrfProtection()
 
-            // CSRF validation interceptor
-            pipeline.intercept(ApplicationCallPipeline.Plugins) {
-                // Skip for OPTIONS requests (CORS preflight)
-                if (call.request.httpMethod == HttpMethod.Options) {
-                    return@intercept
+            pipeline.intercept(ApplicationCallPipeline.Setup) {
+                // Generate token early in the pipeline
+                if (!call.response.isCommitted && 
+                    !call.request.path().startsWith("/static") &&
+                    !configuration.excludedPaths.any { call.request.path().startsWith(it) }) {
+                    
+                    val existingToken = call.request.cookies[configuration.cookieName]
+                    if (existingToken == null) {
+                        val token = UUID.randomUUID().toString()
+                        call.response.cookies.append(
+                            Cookie(
+                                name = configuration.cookieName,
+                                value = token,
+                                secure = false, // Set to true in production
+                                httpOnly = false,
+                                path = "/",
+                                extensions = mapOf("SameSite" to "Lax")
+                            )
+                        )
+                    }
                 }
+            }
 
-                // Skip for excluded paths
-                if (configuration.excludedPaths.any { call.request.path().startsWith(it) }) {
+            pipeline.intercept(ApplicationCallPipeline.Plugins) {
+                // Skip CSRF check for excluded paths and OPTIONS requests
+                if (call.request.httpMethod == HttpMethod.Options ||
+                    configuration.excludedPaths.any { call.request.path().startsWith(it) }) {
                     return@intercept
                 }
 
                 // Skip for non-mutation methods
-                if (call.request.httpMethod !in listOf(HttpMethod.Post, HttpMethod.Put, HttpMethod.Delete, HttpMethod.Patch)) {
+                if (call.request.httpMethod !in listOf(
+                    HttpMethod.Post,
+                    HttpMethod.Put,
+                    HttpMethod.Delete,
+                    HttpMethod.Patch
+                )) {
                     return@intercept
                 }
 
-                // Get token from cookie
                 val cookieToken = call.request.cookies[configuration.cookieName]
-
-                // Get token from header
                 val headerToken = call.request.header(configuration.headerName)
 
-                // Check if tokens match
                 if (cookieToken == null || headerToken == null || cookieToken != headerToken) {
-                    call.respond(HttpStatusCode.Forbidden, mapOf("error" to "CSRF token validation failed"))
+                    call.respond(HttpStatusCode.Forbidden, mapOf(
+                        "error" to "CSRF token validation failed",
+                        "message" to "Invalid or missing CSRF token"
+                    ))
                     finish()
-                }
-            }
-
-            // CSRF token generation interceptor
-            pipeline.intercept(ApplicationCallPipeline.Plugins) {
-                // Skip for static files
-                if (call.request.path().startsWith("/static")) {
-                    return@intercept
-                }
-
-                // Check if token already exists in cookie
-                if (call.request.cookies[configuration.cookieName] == null) {
-                    // Generate a new token
-                    val token = UUID.randomUUID().toString()
-
-                    // Set cookie with SameSite=None to allow cross-site requests
-                    call.response.cookies.append(
-                        Cookie(
-                            name = configuration.cookieName,
-                            value = token,
-                            secure = false, // Set to false for local development
-                            httpOnly = false, // Accessible by JavaScript
-                            path = "/",
-                            extensions = mapOf("SameSite" to "None") // Allow cross-site requests
-                        )
-                    )
                 }
             }
 
@@ -102,7 +100,8 @@ fun Application.configureCsrfProtection() {
             "/api/auth/login",
             "/api/auth/register",
             "/api/auth/csrf",
-            "/api/files" // Allow file operations without CSRF
+            "/api/files",
+            "/cdn"
         )
     }
 }

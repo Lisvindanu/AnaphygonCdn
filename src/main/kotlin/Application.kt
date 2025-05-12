@@ -29,20 +29,25 @@ fun Application.module() {
     val userRoleService = UserRoleService(database)
     val jwtService = JwtService()
 
-    // Configure metrics first to make them available to other modules
-    configureMonitoring()
-
-    // Initialize user roles and permissions
-    org.anaphygon.auth.db.DatabaseInit.init(database)
-
-    // Configure remaining modules
+    // Configure in correct order:
+    // 1. Basic infrastructure
     configureSerialization()
     configureDatabases()
-    configureHTTP()
+    
+    // 2. Monitoring (before request handling)
+    configureMonitoring()
+    
+    // 3. Security in correct order
+    configureHTTP()  // CORS configuration
     configureCsrfProtection()
     configureRateLimiting()
-    configureAuth(jwtService)  // Pass jwtService here
-    configureRouting()
+    configureAuth(jwtService)
+    
+    // 4. Initialize database after security is configured
+    org.anaphygon.auth.db.DatabaseInit.init(database)
+    
+    // 5. Route configuration last
+    configureRouting(userRoleService, jwtService)
     configureStatic()
     configureH2Console()
 

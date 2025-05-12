@@ -5,6 +5,7 @@ import com.auth0.jwt.JWT
 import com.auth0.jwt.JWTVerifier
 import com.auth0.jwt.algorithms.Algorithm
 import org.anaphygon.auth.model.User
+import org.anaphygon.util.Logger
 import java.util.*
 
 class JwtService(
@@ -14,6 +15,7 @@ class JwtService(
     private val validityInMs: Long = 36_000_00 * 24 // 24 hours
 ) {
     private val algorithm = Algorithm.HMAC256(secret)
+    private val logger = Logger("JwtService")
 
     val verifier: JWTVerifier = JWT
         .require(algorithm)
@@ -24,6 +26,8 @@ class JwtService(
     fun generateToken(user: User): String {
         val now = Date()
         val validity = Date(now.time + validityInMs)
+
+        logger.info("Generating token for user ${user.username} with roles: ${user.roles}")
 
         return JWT.create()
             .withSubject("Authentication")

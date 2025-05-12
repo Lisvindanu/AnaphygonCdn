@@ -108,34 +108,50 @@ class UserRoleService(private val database: Database) {
 
     suspend fun createUser(username: String, email: String, password: String): User {
         return dbQuery {
-            // Check if username already exists
-            val usernameExists = UsersTable.selectAll().where { UsersTable.username eq username }.count() > 0
-            // Check if email already exists
-            val emailExists = UsersTable.selectAll().where { UsersTable.email eq email }.count() > 0
+            try {
+                // Check if username already exists
+                val usernameExists = UsersTable.selectAll().where { UsersTable.username eq username }.count() > 0
+                // Check if email already exists
+                val emailExists = UsersTable.selectAll().where { UsersTable.email eq email }.count() > 0
 
-            if (usernameExists || emailExists) {
-                throw IllegalArgumentException("Username or email already exists")
+                if (usernameExists || emailExists) {
+                    throw IllegalArgumentException("Username or email already exists")
+                }
+
+                val userId = UUID.randomUUID().toString()
+                val hashedPassword = BCrypt.hashpw(password, BCrypt.gensalt())
+
+                UsersTable.insert {
+                    it[id] = userId
+                    it[this.username] = username
+                    it[this.email] = email
+                    it[passwordHash] = hashedPassword
+                    it[active] = true
+                    it[createdAt] = System.currentTimeMillis()
+                }
+
+                // Assign default USER role
+                UserRolesTable.insert {
+                    it[this.userId] = userId
+                    it[roleName] = "USER"
+                }
+
+                // Fetch the created user with its roles
+                val userRow = UsersTable.selectAll()
+                    .where { UsersTable.id eq userId }
+                    .firstOrNull()
+
+                if (userRow == null) {
+                    throw IllegalStateException("User was created but could not be retrieved")
+                }
+
+                mapRowToUser(userRow)
+            } catch (e: Exception) {
+                // Log error for debugging
+                println("Error creating user: ${e.message}")
+                e.printStackTrace()
+                throw e
             }
-
-            val userId = UUID.randomUUID().toString()
-            val hashedPassword = BCrypt.hashpw(password, BCrypt.gensalt())
-
-            UsersTable.insert {
-                it[id] = userId
-                it[this.username] = username
-                it[this.email] = email
-                it[passwordHash] = hashedPassword
-                it[active] = true
-                it[createdAt] = System.currentTimeMillis()
-            }
-
-            // Assign default USER role
-            UserRolesTable.insert {
-                it[this.userId] = userId
-                it[roleName] = "USER"
-            }
-
-            getUserById(userId)!!
         }
     }
 
@@ -177,6 +193,13 @@ class UserRoleService(private val database: Database) {
             UsersTable.selectAll().where { UsersTable.username eq username }
                 .firstOrNull()
                 ?.let { mapRowToUser(it) }
+        }
+    }
+
+    suspend fun getAllUsers(): List<User> {
+        return dbQuery {
+            UsersTable.selectAll()
+                .map { mapRowToUser(it) }
         }
     }
 
@@ -295,6 +318,9 @@ class UserRoleService(private val database: Database) {
             .selectAll().where { UserRolesTable.userId eq userId }
             .map { it[UserRolesTable.roleName] }
             .toSet()
+
+        // Log roles for debugging
+        println("User roles for ${row[UsersTable.username]}: $roles")
 
         return User(
             id = userId,

@@ -9,5 +9,6 @@ data class FileMeta(
     val storedFileName: String,
     val contentType: String,
     val size: Long,
-    val uploadDate: Long
+    val uploadDate: Long,
+    val userId: String? = null
 )

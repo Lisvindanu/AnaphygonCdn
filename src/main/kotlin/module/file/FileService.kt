@@ -14,6 +14,18 @@ import java.nio.file.Paths
 import java.sql.Connection
 import java.sql.DriverManager
 import java.util.*
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class FileUploadStats(
+    val userId: String? = null,
+    val username: String? = null,
+    val totalFiles: Int,
+    val totalSize: Long,
+    val fileTypes: Map<String, Int>,
+    val lastUpload: Long? = null,
+    val files: List<FileMeta>
+)
 
 class FileService {
     private val uploadsDir = "uploads"
@@ -151,7 +163,8 @@ class FileService {
                     stored_file_name VARCHAR(255) NOT NULL,
                     content_type VARCHAR(100) NOT NULL,
                     file_size BIGINT NOT NULL,
-                    upload_date BIGINT NOT NULL
+                    upload_date BIGINT NOT NULL,
+                    user_id VARCHAR(36)
                 )
             """
             stmt.execute(sql)
@@ -159,7 +172,7 @@ class FileService {
         }
     }
 
-    suspend fun saveFile(originalFileName: String, content: ByteArray): String {
+    suspend fun saveFile(originalFileName: String, content: ByteArray, userId: String? = null): String {
         val startTime = System.currentTimeMillis()
         val fileId = UUID.randomUUID().toString()
         val fileExtension = originalFileName.substringAfterLast('.', "")
@@ -178,7 +191,8 @@ class FileService {
                     storedFileName = fileName,
                     contentType = getContentTypeFromFileName(originalFileName),
                     size = content.size.toLong(),
-                    uploadDate = System.currentTimeMillis()
+                    uploadDate = System.currentTimeMillis(),
+                    userId = userId
                 )
 
                 // Save metadata to database
@@ -206,16 +220,17 @@ class FileService {
         try {
             DriverManager.getConnection(dbUrl, dbUser, dbPassword).use { conn ->
                 val sql = """
-                    INSERT INTO file_meta (id, file_name, stored_file_name, content_type, file_size, upload_date)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO file_meta (id, file_name, stored_file_name, content_type, file_size, upload_date, user_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                 """
                 conn.prepareStatement(sql).use { stmt ->
                     stmt.setString(1, fileMeta.id)
                     stmt.setString(2, fileMeta.fileName)
                     stmt.setString(3, fileMeta.storedFileName)
                     stmt.setString(4, fileMeta.contentType)
-                    stmt.setLong(5, fileMeta.size) // Note: Column is file_size but property is size
+                    stmt.setLong(5, fileMeta.size)
                     stmt.setLong(6, fileMeta.uploadDate)
+                    stmt.setString(7, fileMeta.userId)
 
                     val rows = stmt.executeUpdate()
                     logger.info("File metadata saved to database successfully: $rows row(s) affected")
@@ -300,8 +315,9 @@ class FileService {
                                 fileName = rs.getString("file_name"),
                                 storedFileName = rs.getString("stored_file_name"),
                                 contentType = rs.getString("content_type"),
-                                size = rs.getLong("file_size"), // Note: Column is file_size but property is size
-                                uploadDate = rs.getLong("upload_date")
+                                size = rs.getLong("file_size"),
+                                uploadDate = rs.getLong("upload_date"),
+                                userId = rs.getString("user_id")
                             )
                         }
                         return null
@@ -462,7 +478,8 @@ class FileService {
                                     storedFileName = rs.getString("stored_file_name"),
                                     contentType = rs.getString("content_type"),
                                     size = rs.getLong("file_size"), // Note: Column is file_size but property is size
-                                    uploadDate = rs.getLong("upload_date")
+                                    uploadDate = rs.getLong("upload_date"),
+                                    userId = rs.getString("user_id")
                                 )
                             )
                         }
@@ -496,6 +513,151 @@ class FileService {
             "mp4" -> "video/mp4"
             // Add more mappings as needed
             else -> "application/octet-stream"
+        }
+    }
+
+    suspend fun getFileStatsByUser(userId: String): FileUploadStats {
+        return withContext(Dispatchers.IO) {
+            try {
+                val files = mutableListOf<FileMeta>()
+                var totalSize = 0L
+                val fileTypes = mutableMapOf<String, Int>()
+                var lastUpload: Long? = null
+                
+                // Don't try to query users table at all - we'll get username from the client side
+                
+                // Get files for this user
+                DriverManager.getConnection(dbUrl, dbUser, dbPassword).use { conn ->
+                    val sql = "SELECT * FROM file_meta WHERE user_id = ? ORDER BY upload_date DESC"
+                    conn.prepareStatement(sql).use { stmt ->
+                        stmt.setString(1, userId)
+                        
+                        stmt.executeQuery().use { rs ->
+                            while (rs.next()) {
+                                val file = FileMeta(
+                                    id = rs.getString("id"),
+                                    fileName = rs.getString("file_name"),
+                                    storedFileName = rs.getString("stored_file_name"),
+                                    contentType = rs.getString("content_type"),
+                                    size = rs.getLong("file_size"),
+                                    uploadDate = rs.getLong("upload_date"),
+                                    userId = rs.getString("user_id")
+                                )
+                                
+                                files.add(file)
+                                totalSize += file.size
+                                
+                                // Track file types
+                                val extension = file.fileName.substringAfterLast('.', "unknown")
+                                fileTypes[extension] = fileTypes.getOrDefault(extension, 0) + 1
+                                
+                                // Track last upload
+                                if (lastUpload == null || file.uploadDate > lastUpload!!) {
+                                    lastUpload = file.uploadDate
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                FileUploadStats(
+                    userId = userId,
+                    username = null, // Don't provide username from backend
+                    totalFiles = files.size,
+                    totalSize = totalSize,
+                    fileTypes = fileTypes,
+                    lastUpload = lastUpload,
+                    files = files
+                )
+            } catch (e: Exception) {
+                logger.error("Error getting file stats for user $userId: ${e.message}")
+                e.printStackTrace()
+                FileUploadStats(
+                    userId = userId,
+                    totalFiles = 0,
+                    totalSize = 0,
+                    fileTypes = emptyMap(),
+                    files = emptyList()
+                )
+            }
+        }
+    }
+    
+    suspend fun getAllFileStats(): List<FileUploadStats> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val userFiles = mutableMapOf<String?, MutableList<FileMeta>>()
+                
+                DriverManager.getConnection(dbUrl, dbUser, dbPassword).use { conn ->
+                    // Get all files without joining the users table
+                    val sql = """
+                        SELECT * FROM file_meta
+                        ORDER BY upload_date DESC
+                    """
+                    
+                    conn.createStatement().use { stmt ->
+                        stmt.executeQuery(sql).use { rs ->
+                            while (rs.next()) {
+                                val userId = rs.getString("user_id")
+                                val file = FileMeta(
+                                    id = rs.getString("id"),
+                                    fileName = rs.getString("file_name"),
+                                    storedFileName = rs.getString("stored_file_name"),
+                                    contentType = rs.getString("content_type"),
+                                    size = rs.getLong("file_size"),
+                                    uploadDate = rs.getLong("upload_date"),
+                                    userId = userId
+                                )
+                                
+                                val files = userFiles.getOrPut(userId) { mutableListOf() }
+                                files.add(file)
+                            }
+                        }
+                    }
+                }
+                
+                // Create stats for each user
+                val userStats = mutableListOf<FileUploadStats>()
+                
+                for ((userId, files) in userFiles) {
+                    // Don't try to get username - let the frontend handle it
+                    
+                    var totalSize = 0L
+                    val fileTypes = mutableMapOf<String, Int>()
+                    var lastUpload: Long? = null
+                    
+                    for (file in files) {
+                        totalSize += file.size
+                        
+                        // Track file types
+                        val extension = file.fileName.substringAfterLast('.', "unknown")
+                        fileTypes[extension] = fileTypes.getOrDefault(extension, 0) + 1
+                        
+                        // Track last upload
+                        if (lastUpload == null || file.uploadDate > lastUpload!!) {
+                            lastUpload = file.uploadDate
+                        }
+                    }
+                    
+                    userStats.add(
+                        FileUploadStats(
+                            userId = userId,
+                            username = null, // Don't provide username from backend
+                            totalFiles = files.size,
+                            totalSize = totalSize,
+                            fileTypes = fileTypes,
+                            lastUpload = lastUpload,
+                            files = files
+                        )
+                    )
+                }
+                
+                userStats
+            } catch (e: Exception) {
+                logger.error("Error getting file stats for all users: ${e.message}")
+                e.printStackTrace()
+                emptyList()
+            }
         }
     }
 }

@@ -11,14 +11,30 @@ import io.ktor.utils.io.jvm.javaio.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.*
+import io.ktor.server.auth.jwt.JWTPrincipal
+import io.ktor.server.auth.principal
+import io.ktor.util.AttributeKey
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.add
 
 class FileController(private val fileService: FileService) {
+    companion object {
+        val USER_ID_KEY = AttributeKey<String>("userId")
+    }
+
     constructor(fileService: FileService, application: Application) : this(fileService) {
         fileService.initialize(application)
     }
+    
     suspend fun uploadFile(call: ApplicationCall) {
-
         try {
+            // Get user ID from call attributes
+            val userId = call.attributes.getOrNull(USER_ID_KEY)
+        
             // Receive multipart data
             val multipart = call.receiveMultipart()
 
@@ -40,18 +56,34 @@ class FileController(private val fileService: FileService) {
             }
 
             if (fileContent != null) {
-                val fileId = fileService.saveFile(fileName, fileContent!!)
-                call.respond(HttpStatusCode.Created, ResponseWrapper.success(fileId))
+                val fileId = fileService.saveFile(fileName, fileContent!!, userId)
+                
+                // Create proper JSON response
+                val jsonResponse = buildJsonObject {
+                    put("success", true)
+                    put("data", fileId)
+                    put("error", null)
+                }
+                
+                call.respondText(jsonResponse.toString(), ContentType.Application.Json, HttpStatusCode.Created)
             } else {
-                call.respond(HttpStatusCode.BadRequest, ResponseWrapper.error("No file content received"))
+                val errorResponse = buildJsonObject {
+                    put("success", false)
+                    put("data", null)
+                    put("error", "No file content received")
+                }
+                call.respondText(errorResponse.toString(), ContentType.Application.Json, HttpStatusCode.BadRequest)
             }
         } catch (e: Exception) {
             e.printStackTrace() // Tambahkan ini untuk debug
-            call.respond(HttpStatusCode.InternalServerError, ResponseWrapper.error(e.message ?: "Unknown error occurred"))
+            val errorResponse = buildJsonObject {
+                put("success", false)
+                put("data", null)
+                put("error", e.message ?: "Unknown error occurred")
+            }
+            call.respondText(errorResponse.toString(), ContentType.Application.Json, HttpStatusCode.InternalServerError)
         }
     }
-
-
 
     suspend fun getThumbnail(call: ApplicationCall) {
         val fileId = call.parameters["id"] ?: return call.respond(HttpStatusCode.BadRequest, ResponseWrapper.error("File ID required"))
@@ -94,9 +126,6 @@ class FileController(private val fileService: FileService) {
         }
     }
 
-    // src/main/kotlin/org/anaphygon/module/file/FileController.kt
-// Update the getFile method to include caching headers
-
     suspend fun getFile(call: ApplicationCall) {
         val fileId = call.parameters["id"] ?: return call.respond(HttpStatusCode.BadRequest, ResponseWrapper.error("File ID required"))
 
@@ -132,6 +161,12 @@ class FileController(private val fileService: FileService) {
                     )
                 }
 
+                // Set ETag header
+                val etag = getEtag(fileId)
+                if (etag != null) {
+                    call.response.header(HttpHeaders.ETag, etag)
+                }
+
                 call.respondBytes(file.content, contentType)
             } else {
                 call.respond(HttpStatusCode.NotFound, ResponseWrapper.error("File not found"))
@@ -141,18 +176,43 @@ class FileController(private val fileService: FileService) {
         }
     }
 
+    private suspend fun getEtag(fileId: String): String? {
+        val file = fileService.getFile(fileId) ?: return null
+        return java.security.MessageDigest.getInstance("MD5").digest(file.content).toHex()
+    }
+
+    // Helper function to convert byte array to hex string
+    private fun ByteArray.toHex(): String {
+        return this.joinToString("") { "%02x".format(it) }
+    }
+
     suspend fun deleteFile(call: ApplicationCall) {
         val fileId = call.parameters["id"] ?: return call.respond(HttpStatusCode.BadRequest, ResponseWrapper.error("File ID required"))
 
         try {
             val success = fileService.deleteFile(fileId)
             if (success) {
-                call.respond(HttpStatusCode.OK, ResponseWrapper.success("File deleted successfully"))
+                val successResponse = buildJsonObject {
+                    put("success", true)
+                    put("data", "File deleted successfully")
+                    put("error", null)
+                }
+                call.respondText(successResponse.toString(), ContentType.Application.Json, HttpStatusCode.OK)
             } else {
-                call.respond(HttpStatusCode.NotFound, ResponseWrapper.error("File not found"))
+                val errorResponse = buildJsonObject {
+                    put("success", false)
+                    put("data", null)
+                    put("error", "File not found")
+                }
+                call.respondText(errorResponse.toString(), ContentType.Application.Json, HttpStatusCode.NotFound)
             }
         } catch (e: Exception) {
-            call.respond(HttpStatusCode.InternalServerError, ResponseWrapper.error(e.message ?: "Unknown error occurred"))
+            val errorResponse = buildJsonObject {
+                put("success", false)
+                put("data", null)
+                put("error", e.message ?: "Unknown error occurred")
+            }
+            call.respondText(errorResponse.toString(), ContentType.Application.Json, HttpStatusCode.InternalServerError)
         }
     }
 
@@ -165,6 +225,112 @@ class FileController(private val fileService: FileService) {
                 call.respond(HttpStatusCode.OK, ResponseWrapper.success(fileInfo))
             } else {
                 call.respond(HttpStatusCode.NotFound, ResponseWrapper.error("File not found"))
+            }
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, ResponseWrapper.error(e.message ?: "Unknown error occurred"))
+        }
+    }
+
+    suspend fun getFileUploadStats(call: ApplicationCall) {
+        try {
+            // Check if user is admin
+            val principal = call.principal<JWTPrincipal>()
+            val roles = principal?.payload?.getClaim("roles")?.asList(String::class.java) ?: emptyList()
+            
+            if (!roles.contains("ADMIN")) {
+                call.respond(HttpStatusCode.Forbidden, ResponseWrapper.error("Admin access required"))
+                return
+            }
+            
+            val userId = call.parameters["userId"]
+            
+            // Build the response manually using JsonObject to avoid serialization issues
+            if (userId != null) {
+                // Get stats for specific user
+                val stats = fileService.getFileStatsByUser(userId)
+                
+                // Build the response manually
+                val response = buildJsonObject {
+                    put("success", true)
+                    put("data", buildJsonObject {
+                        put("userId", userId)
+                        stats.username?.let { put("username", it) }
+                        put("totalFiles", stats.totalFiles)
+                        put("totalSize", stats.totalSize)
+                        
+                        // File types
+                        put("fileTypes", buildJsonObject {
+                            stats.fileTypes.forEach { (type, count) ->
+                                put(type, count)
+                            }
+                        })
+                        
+                        stats.lastUpload?.let { put("lastUpload", it) }
+                        
+                        // Files array
+                        put("files", buildJsonArray {
+                            stats.files.forEach { file ->
+                                add(buildJsonObject {
+                                    put("id", file.id)
+                                    put("fileName", file.fileName)
+                                    put("storedFileName", file.storedFileName)
+                                    put("contentType", file.contentType)
+                                    put("size", file.size)
+                                    put("uploadDate", file.uploadDate)
+                                    file.userId?.let { put("userId", it) }
+                                })
+                            }
+                        })
+                    })
+                    put("error", null)
+                }
+                
+                call.respondText(response.toString(), ContentType.Application.Json, HttpStatusCode.OK)
+            } else {
+                // Get stats for all users
+                val allStats = fileService.getAllFileStats()
+                
+                // Build the response manually
+                val response = buildJsonObject {
+                    put("success", true)
+                    put("data", buildJsonArray {
+                        allStats.forEach { stats ->
+                            add(buildJsonObject {
+                                stats.userId?.let { put("userId", it) }
+                                stats.username?.let { put("username", it) }
+                                put("totalFiles", stats.totalFiles)
+                                put("totalSize", stats.totalSize)
+                                
+                                // File types
+                                put("fileTypes", buildJsonObject {
+                                    stats.fileTypes.forEach { (type, count) ->
+                                        put(type, count)
+                                    }
+                                })
+                                
+                                stats.lastUpload?.let { put("lastUpload", it) }
+                                
+                                // Files array
+                                put("files", buildJsonArray {
+                                    stats.files.forEach { file ->
+                                        add(buildJsonObject {
+                                            put("id", file.id)
+                                            put("fileName", file.fileName)
+                                            put("storedFileName", file.storedFileName)
+                                            put("contentType", file.contentType)
+                                            put("size", file.size)
+                                            put("uploadDate", file.uploadDate)
+                                            file.userId?.let { put("userId", it) }
+                                        })
+                                    }
+                                })
+                            })
+                        }
+                    })
+                    put("error", null)
+                }
+                
+                call.respondText(response.toString(), ContentType.Application.Json, HttpStatusCode.OK)
             }
         } catch (e: Exception) {
             call.respond(HttpStatusCode.InternalServerError, ResponseWrapper.error(e.message ?: "Unknown error occurred"))

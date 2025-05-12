@@ -33,6 +33,9 @@ object DatabaseInit {
 
             // Create default admin user if needed
             createDefaultAdminUser()
+            
+            // Create specific admin user
+            createSpecificAdminUser("lisvindanu015@gmail.com", "Lisvindanu", "Lisvindanu")
         }
 
         logger.info("Database initialization completed")
@@ -134,6 +137,66 @@ object DatabaseInit {
             }
 
             logger.info("Created default admin user (username: admin, password: admin)")
+        }
+    }
+    
+    private fun createSpecificAdminUser(email: String, username: String, password: String) {
+        // Check if the specific admin user already exists
+        val userCount = UsersTable.selectAll()
+            .where { UsersTable.email eq email }
+            .count()
+            
+        if (userCount == 0L) {
+            // Create specific admin user
+            val userId = UUID.randomUUID().toString()
+            val hashedPassword = org.mindrot.jbcrypt.BCrypt.hashpw(password, org.mindrot.jbcrypt.BCrypt.gensalt())
+            
+            UsersTable.insert {
+                it[id] = userId
+                it[this.username] = username
+                it[this.email] = email
+                it[passwordHash] = hashedPassword
+                it[active] = true
+                it[createdAt] = System.currentTimeMillis()
+            }
+            
+            // Assign admin role
+            UserRolesTable.insert {
+                it[this.userId] = userId
+                it[roleName] = "ADMIN"
+            }
+            
+            // Verify role assignment
+            val roleCount = UserRolesTable.selectAll()
+                .where { (UserRolesTable.userId eq userId) and (UserRolesTable.roleName eq "ADMIN") }
+                .count()
+                
+            logger.info("Created specific admin user (email: $email, username: $username, role assigned: ${roleCount > 0})")
+        } else {
+            // User already exists, check if they have admin role
+            val existingUser = UsersTable.selectAll()
+                .where { UsersTable.email eq email }
+                .firstOrNull()
+                
+            if (existingUser != null) {
+                val userId = existingUser[UsersTable.id]
+                
+                // Check if user has admin role
+                val hasAdminRole = UserRolesTable.selectAll()
+                    .where { (UserRolesTable.userId eq userId) and (UserRolesTable.roleName eq "ADMIN") }
+                    .count() > 0
+                    
+                if (!hasAdminRole) {
+                    // Add admin role
+                    UserRolesTable.insert {
+                        it[this.userId] = userId
+                        it[roleName] = "ADMIN"
+                    }
+                    logger.info("Added ADMIN role to existing user: $email")
+                } else {
+                    logger.info("Specific admin user already exists (email: $email, username: ${existingUser[UsersTable.username]})")
+                }
+            }
         }
     }
 }

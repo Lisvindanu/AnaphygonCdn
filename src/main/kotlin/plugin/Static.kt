@@ -14,6 +14,10 @@ fun Application.configureStatic() {
     val uploadsDir = "uploads"
     File(uploadsDir).mkdirs()
 
+    // Create static directory if it doesn't exist
+    val staticDir = "static"
+    File(staticDir).mkdirs()
+
     // Add interceptor for adding cache headers
     intercept(ApplicationCallPipeline.Plugins) {
         call.response.pipeline.intercept(io.ktor.server.response.ApplicationSendPipeline.Before) {
@@ -37,6 +41,17 @@ fun Application.configureStatic() {
     }
 
     routing {
+        // Serve index.html at the root
+        get("/") {
+            call.respondFile(File("index.html"))
+        }
+
+        // Static resources
+        static("/static") {
+            staticBasePackage = "static"
+            resources(".")
+        }
+
         // Serve files directly from the uploads directory
         static("/cdn") {
             files(uploadsDir)

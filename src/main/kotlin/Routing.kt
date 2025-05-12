@@ -18,11 +18,6 @@ fun Application.configureRouting() {
     }
     install(Resources)
     routing {
-        get("/") {
-            call.respondText("AnaphygonCDN Server")
-        }
-
-        // Tambahkan file routes untuk CDN
-        fileRoutes()
+        // API routes are configured in separate modules
     }
 }

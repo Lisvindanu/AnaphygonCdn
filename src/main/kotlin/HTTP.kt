@@ -12,7 +12,8 @@ fun Application.configureHTTP() {
     }
 
     install(CORS) {
-        // Allow requests from any origin
+        // Allow requests from any origin during development
+        // In production, replace with specific origins
         anyHost()
 
         // Allow common HTTP methods
@@ -24,12 +25,17 @@ fun Application.configureHTTP() {
         allowMethod(HttpMethod.Patch)
         allowMethod(HttpMethod.Head)
 
-        // Allow common headers
+        // Allow specific headers
         allowHeader(HttpHeaders.Authorization)
         allowHeader(HttpHeaders.ContentType)
         allowHeader(HttpHeaders.Accept)
         allowHeader("X-XSRF-TOKEN")
         allowHeader("X-Requested-With")
+
+        // Expose headers that clients are allowed to read
+        exposeHeader(HttpHeaders.Authorization)
+        exposeHeader("X-XSRF-TOKEN")
+        exposeHeader(HttpHeaders.ContentType)
 
         // Allow credentials (cookies)
         allowCredentials = true
@@ -37,7 +43,7 @@ fun Application.configureHTTP() {
         // Allow all request headers
         allowHeaders { true }
 
-        // Set max age for preflight requests cache
+        // Set max age for preflight requests cache (1 hour)
         maxAgeInSeconds = 3600
     }
 }

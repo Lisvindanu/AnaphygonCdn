@@ -12,6 +12,7 @@ object FileMetaTable : Table("file_meta") {
     val contentType: Column<String> = varchar("content_type", 100)
     val size: Column<Long> = long("size")
     val uploadDate: Column<Long> = long("upload_date")
+    val userId: Column<String?> = varchar("user_id", 36).nullable()
 
     override val primaryKey = PrimaryKey(id)
 
@@ -22,7 +23,8 @@ object FileMetaTable : Table("file_meta") {
             storedFileName = row[storedFileName],
             contentType = row[contentType],
             size = row[size],
-            uploadDate = row[uploadDate]
+            uploadDate = row[uploadDate],
+            userId = row[userId]
         )
     }
 }
