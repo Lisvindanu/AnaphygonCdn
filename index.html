@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CDN Test Interface</title>
+  <title>Anaphygon CDN Interface</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -78,10 +78,32 @@
       background-color: #f8d7da;
       color: #721c24;
     }
+    .user-info {
+      background-color: #e9ecef;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: bold;
+      padding: 3px 6px;
+      border-radius: 10px;
+      margin-right: 5px;
+      background-color: #6c757d;
+      color: white;
+    }
+    .badge.admin {
+      background-color: #dc3545;
+    }
+    .badge.user {
+      background-color: #28a745;
+    }
   </style>
 </head>
 <body>
-<h1>CDN Test Interface</h1>
+<h1>Anaphygon CDN Interface</h1>
 
 <div class="navbar">
   <a href="#" onclick="showSection('login-section')">Login</a>
@@ -93,16 +115,23 @@
 
 <div id="statusMessage" class="hidden"></div>
 
+<div id="user-info" class="user-info hidden">
+  <h3>Welcome, <span id="username-display"></span></h3>
+  <div>
+    Roles: <span id="roles-display"></span>
+  </div>
+</div>
+
 <div id="login-section" class="container">
   <h2>Login</h2>
   <form id="login-form">
     <div>
-      <label for="login-username">Username:</label>
-      <input type="text" id="login-username" required>
+      <label for="login-username">Username or Email:</label>
+      <input type="text" id="login-username" placeholder="Enter username or email" required>
     </div>
     <div>
       <label for="login-password">Password:</label>
-      <input type="password" id="login-password" required>
+      <input type="password" id="login-password" placeholder="Enter password" required>
     </div>
     <button type="submit">Login</button>
   </form>
@@ -113,11 +142,15 @@
   <form id="register-form">
     <div>
       <label for="register-username">Username:</label>
-      <input type="text" id="register-username" required>
+      <input type="text" id="register-username" placeholder="Choose a username" required>
+    </div>
+    <div>
+      <label for="register-email">Email:</label>
+      <input type="email" id="register-email" placeholder="Enter your email address" required>
     </div>
     <div>
       <label for="register-password">Password:</label>
-      <input type="password" id="register-password" required>
+      <input type="password" id="register-password" placeholder="Choose a password" required>
     </div>
     <button type="submit">Register</button>
   </form>
@@ -146,13 +179,35 @@
   // Global variables
   let token = localStorage.getItem('cdnToken');
   let csrfToken = '';
+  let currentUser = JSON.parse(localStorage.getItem('cdnUser')) || null;
 
   // Check if user is logged in
-  if (token) {
+  if (token && currentUser) {
     document.getElementById('logout-link').classList.remove('hidden');
+    document.getElementById('user-info').classList.remove('hidden');
+    document.getElementById('username-display').textContent = currentUser.username;
+    displayRoles(currentUser.roles);
     showSection('files-section');
   } else {
     showSection('login-section');
+  }
+
+  // Display user roles with badges
+  function displayRoles(roles) {
+    const rolesDisplay = document.getElementById('roles-display');
+    rolesDisplay.innerHTML = '';
+
+    if (!roles || roles.length === 0) {
+      rolesDisplay.textContent = 'None';
+      return;
+    }
+
+    roles.forEach(role => {
+      const badge = document.createElement('span');
+      badge.className = `badge ${role.toLowerCase()}`;
+      badge.textContent = role;
+      rolesDisplay.appendChild(badge);
+    });
   }
 
   // Fetch CSRF token
@@ -211,7 +266,7 @@
   document.getElementById('login-form').addEventListener('submit', async function(e) {
     e.preventDefault();
 
-    const username = document.getElementById('login-username').value;
+    const usernameOrEmail = document.getElementById('login-username').value;
     const password = document.getElementById('login-password').value;
 
     try {
@@ -220,7 +275,7 @@
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ usernameOrEmail, password }),
         credentials: 'include'
       });
 
@@ -228,8 +283,20 @@
 
       if (data.success) {
         token = data.data.token;
+        currentUser = {
+          id: data.data.userId,
+          username: data.data.username,
+          roles: data.data.roles
+        };
+
         localStorage.setItem('cdnToken', token);
+        localStorage.setItem('cdnUser', JSON.stringify(currentUser));
+
         document.getElementById('logout-link').classList.remove('hidden');
+        document.getElementById('user-info').classList.remove('hidden');
+        document.getElementById('username-display').textContent = currentUser.username;
+        displayRoles(currentUser.roles);
+
         showMessage('Logged in successfully!');
         showSection('files-section');
       } else {
@@ -245,6 +312,7 @@
     e.preventDefault();
 
     const username = document.getElementById('register-username').value;
+    const email = document.getElementById('register-email').value;
     const password = document.getElementById('register-password').value;
 
     try {
@@ -253,7 +321,7 @@
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, email, password }),
         credentials: 'include'
       });
 
@@ -261,8 +329,20 @@
 
       if (data.success) {
         token = data.data.token;
+        currentUser = {
+          id: data.data.userId,
+          username: data.data.username,
+          roles: data.data.roles
+        };
+
         localStorage.setItem('cdnToken', token);
+        localStorage.setItem('cdnUser', JSON.stringify(currentUser));
+
         document.getElementById('logout-link').classList.remove('hidden');
+        document.getElementById('user-info').classList.remove('hidden');
+        document.getElementById('username-display').textContent = currentUser.username;
+        displayRoles(currentUser.roles);
+
         showMessage('Registered successfully!');
         showSection('files-section');
       } else {
@@ -365,25 +445,25 @@
       const isImage = file.contentType && file.contentType.startsWith('image/');
 
       html += `
-                <div class="file-card">
-                    <div>
-                        ${isImage ? `<img src="http://localhost:8080/api/files/${file.id}" alt="${file.fileName}">` : ''}
-                        <strong>${file.fileName}</strong>
-                    </div>
-                    <div>ID: ${file.id}</div>
-                    <div>Type: ${file.contentType}</div>
-                    <div>Size: ${formatFileSize(file.size)}</div>
-                    <div>Uploaded: ${formatDate(file.uploadDate)}</div>
-                    <div class="file-actions">
-                        <button onclick="window.open('http://localhost:8080/api/files/${file.id}', '_blank')">Download</button>
-                        ${isImage ? `
-                        <button onclick="window.open('http://localhost:8080/api/files/${file.id}/thumbnail', '_blank')">Thumbnail</button>
-                        <button onclick="window.open('http://localhost:8080/api/files/${file.id}/resize?width=300&height=200', '_blank')">Resize</button>
-                        ` : ''}
-                        <button onclick="deleteFile('${file.id}')" style="background-color: #dc3545;">Delete</button>
-                    </div>
-                </div>
-                `;
+        <div class="file-card">
+          <div>
+            ${isImage ? `<img src="http://localhost:8080/api/files/${file.id}" alt="${file.fileName}">` : ''}
+            <strong>${file.fileName}</strong>
+          </div>
+          <div>ID: ${file.id}</div>
+          <div>Type: ${file.contentType}</div>
+          <div>Size: ${formatFileSize(file.size)}</div>
+          <div>Uploaded: ${formatDate(file.uploadDate)}</div>
+          <div class="file-actions">
+            <button onclick="window.open('http://localhost:8080/api/files/${file.id}', '_blank')">Download</button>
+            ${isImage ? `
+              <button onclick="window.open('http://localhost:8080/api/files/${file.id}/thumbnail', '_blank')">Thumbnail</button>
+              <button onclick="window.open('http://localhost:8080/api/files/${file.id}/resize?width=300&height=200', '_blank')">Resize</button>
+            ` : ''}
+            <button onclick="deleteFile('${file.id}')" style="background-color: #dc3545;">Delete</button>
+          </div>
+        </div>
+      `;
     });
 
     filesList.innerHTML = html;
@@ -432,8 +512,11 @@
   // Logout
   function logout() {
     localStorage.removeItem('cdnToken');
+    localStorage.removeItem('cdnUser');
     token = null;
+    currentUser = null;
     document.getElementById('logout-link').classList.add('hidden');
+    document.getElementById('user-info').classList.add('hidden');
     showMessage('Logged out successfully!');
     showSection('login-section');
   }
