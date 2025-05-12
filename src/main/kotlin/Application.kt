@@ -19,6 +19,13 @@ fun main(args: Array<String>) {
 }
 
 fun Application.module() {
+    // Create data directory if it doesn't exist
+    val dataDir = java.io.File("./data")
+    if (!dataDir.exists()) {
+        dataDir.mkdirs()
+        log.info("Created data directory for persistent storage")
+    }
+
     // Create Database connection with secure config
     val database = Database.connect(
         url = SecureConfig.dbUrl,

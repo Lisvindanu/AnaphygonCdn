@@ -11,7 +11,7 @@ fun Application.configureDatabases() {
     routing {
         get("/db/health") {
             try {
-                val dbUrl = "jdbc:h2:file:./build/db"
+                val dbUrl = "jdbc:h2:file:./data/cdn_db"
                 val connection = DriverManager.getConnection(dbUrl, "root", "")
                 val metadata = connection.metaData
                 call.respond(
