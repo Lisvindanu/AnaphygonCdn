@@ -12,17 +12,40 @@ object DatabaseFactory {
         // Set default transaction isolation level
         TransactionManager.manager.defaultIsolationLevel = Connection.TRANSACTION_SERIALIZABLE
 
-        // Apply migrations BEFORE creating tables to ensure all columns exist
+        // Check if database is already initialized
+        val tablesExist = transaction(database) {
+            try {
+                val result = exec("SELECT COUNT(*) > 0 FROM file_meta") { rs ->
+                    rs.next() && rs.getBoolean(1)
+                }
+                println("Database check: file_meta table exists = $result")
+                result ?: false
+            } catch (e: Exception) {
+                println("Database check: file_meta table doesn't exist or is empty")
+                false
+            }
+        }
+
+        // Apply migrations FIRST with direct SQL
         forceApplyMigrations(database)
 
         // Create or update tables
         transaction(database) {
-            SchemaUtils.create(FileMetaTable)
-            println("Database tables created or validated successfully")
+            // Users and authorization tables are handled by DatabaseInit
+            // We only create the file-related tables here
+            if (tablesExist) {
+                // Just check for missing columns
+                SchemaUtils.createMissingTablesAndColumns(FileMetaTable)
+                println("File metadata tables checked and updated if needed")
+            } else {
+                // Create tables from scratch
+                SchemaUtils.create(FileMetaTable)
+                println("File metadata tables created")
+            }
         }
     }
 
-    // Force creation of the new columns using direct SQL statements
+    // Apply migrations with direct SQL to avoid issues with missing columns
     private fun forceApplyMigrations(database: Database) {
         transaction(database) {
             try {
@@ -41,7 +64,42 @@ object DatabaseFactory {
                     println("Note: Could not add moderation_status column, it may already exist: ${e.message}")
                 }
 
-                // Verify columns exist by trying to select from them
+                // Add verification column to users table - but don't check for it yet
+                try {
+                    exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS verified BOOLEAN DEFAULT FALSE")
+                    println("Added or verified 'verified' column exists in users table")
+                } catch (e: Exception) {
+                    println("Note: Could not add verified column, it may already exist: ${e.message}")
+                }
+
+                // Create tokens table if not exists
+                try {
+                    exec("""
+                        CREATE TABLE IF NOT EXISTS tokens (
+                            token VARCHAR(64) PRIMARY KEY,
+                            user_id VARCHAR(36) NOT NULL,
+                            type VARCHAR(20) NOT NULL,
+                            expires_at BIGINT NOT NULL,
+                            used BOOLEAN DEFAULT FALSE,
+                            created_at BIGINT DEFAULT 0
+                        )
+                    """)
+                    println("Created or verified tokens table exists")
+                } catch (e: Exception) {
+                    println("Error creating tokens table: ${e.message}")
+                }
+
+                // Add foreign key later to avoid errors if users table doesn't exist yet
+                try {
+                    exec("""
+                        ALTER TABLE tokens ADD CONSTRAINT fk_tokens_user_id 
+                        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                    """)
+                } catch (e: Exception) {
+                    println("Could not add foreign key constraint to tokens table: ${e.message}")
+                }
+
+                // If file_meta table has column issues, recreate it
                 val hasIsPublic = try {
                     exec("SELECT is_public FROM file_meta WHERE 1=0")
                     true

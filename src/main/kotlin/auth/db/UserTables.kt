@@ -1,4 +1,3 @@
-// src/main/kotlin/org/anaphygon/auth/db/UserTables.kt
 package org.anaphygon.auth.db
 
 import org.jetbrains.exposed.sql.Table
@@ -9,8 +8,9 @@ object UsersTable : Table("users") {
     val email = varchar("email", 255).uniqueIndex()
     val passwordHash = varchar("password_hash", 255)
     val active = bool("active").default(true)
-    val createdAt = long("created_at")  // Changed from timestamp to long
-    val lastLogin = long("last_login").nullable()  // Changed from timestamp to long
+    val createdAt = long("created_at")
+    val lastLogin = long("last_login").nullable()
+    val verified = bool("verified").default(false)  // Make sure this field exists
 
     override val primaryKey = PrimaryKey(id)
 }
@@ -18,7 +18,7 @@ object UsersTable : Table("users") {
 object RolesTable : Table("roles") {
     val name = varchar("name", 50)
     val description = varchar("description", 255)
-    val createdAt = long("created_at")  // Changed from timestamp to long
+    val createdAt = long("created_at")
 
     override val primaryKey = PrimaryKey(name)
 }

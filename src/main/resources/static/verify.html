@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Verification - Anaphygon CDN</title>
+    <link rel="stylesheet" href="/styles/main.css">
+    <link rel="stylesheet" href="/styles/components.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <style>
+        .verification-container {
+            max-width: 600px;
+            margin: 100px auto;
+            padding: 30px;
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+        
+        .verification-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+        
+        .success-icon {
+            color: var(--success-color);
+        }
+        
+        .error-icon {
+            color: var(--error-color);
+        }
+        
+        .loading-icon {
+            color: var(--primary-color);
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .verification-title {
+            font-size: 24px;
+            margin-bottom: 15px;
+        }
+        
+        .verification-message {
+            margin-bottom: 25px;
+            color: #555;
+        }
+        
+        .verification-button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: var(--primary-color);
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        
+        .verification-button:hover {
+            background-color: var(--primary-dark);
+        }
+    </style>
+</head>
+<body>
+    <div class="verification-container">
+        <div id="verification-status">
+            <div class="verification-icon loading-icon">
+                <i class="fas fa-circle-notch"></i>
+            </div>
+            <h1 class="verification-title">Verifying your email...</h1>
+            <p class="verification-message">Please wait while we verify your email address.</p>
+        </div>
+        
+        <div id="success-status" style="display: none;">
+            <div class="verification-icon success-icon">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <h1 class="verification-title">Email Verified!</h1>
+            <p class="verification-message">Your email has been successfully verified. You can now use all features of Anaphygon CDN.</p>
+            <a href="/" class="verification-button">Go to Dashboard</a>
+        </div>
+        
+        <div id="error-status" style="display: none;">
+            <div class="verification-icon error-icon">
+                <i class="fas fa-times-circle"></i>
+            </div>
+            <h1 class="verification-title">Verification Failed</h1>
+            <p class="verification-message" id="error-message">The verification link is invalid or has expired.</p>
+            <a href="/" class="verification-button">Go to Homepage</a>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get the token from the URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('token');
+            
+            if (!token) {
+                showError('No verification token found in the URL.');
+                return;
+            }
+            
+            // Call the API to verify the token
+            verifyEmail(token);
+        });
+        
+        async function verifyEmail(token) {
+            try {
+                const response = await fetch('/api/auth/verify', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ token: token })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    showSuccess();
+                } else {
+                    showError(data.error || 'Failed to verify email.');
+                }
+            } catch (error) {
+                console.error('Error verifying email:', error);
+                showError('An error occurred while verifying your email.');
+            }
+        }
+        
+        function showSuccess() {
+            document.getElementById('verification-status').style.display = 'none';
+            document.getElementById('success-status').style.display = 'block';
+            document.getElementById('error-status').style.display = 'none';
+        }
+        
+        function showError(message) {
+            document.getElementById('verification-status').style.display = 'none';
+            document.getElementById('success-status').style.display = 'none';
+            document.getElementById('error-status').style.display = 'block';
+            document.getElementById('error-message').textContent = message;
+        }
+    </script>
+</body>
+</html> 

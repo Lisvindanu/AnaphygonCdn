@@ -1,4 +1,3 @@
-// src/main/kotlin/org/anaphygon/config/SecureConfig.kt
 package org.anaphygon.config
 
 import io.github.cdimascio.dotenv.dotenv
@@ -12,7 +11,7 @@ object SecureConfig {
 
     // Database config
     val dbUrl: String = dotenv["DB_URL"]
-        ?: "jdbc:h2:file:./build/cdn_db;CASE_INSENSITIVE_IDENTIFIERS=TRUE"
+        ?: "jdbc:h2:file:./data/cdn_db;CASE_INSENSITIVE_IDENTIFIERS=TRUE"
     val dbUser: String = dotenv["DB_USER"] ?: "root"
     val dbPassword: String = dotenv["DB_PASSWORD"] ?: ""
 
@@ -32,10 +31,6 @@ object SecureConfig {
         ?.split(",")?.map { it.trim() }
         ?: listOf("http://localhost:8080", "http://127.0.0.1:8080", "http://localhost:3000")
 
-//    val allowedOrigins: List<String> = dotenv["ALLOWED_ORIGINS"]
-//        ?.split(",")?.map { it.trim() }
-//        ?: listOf("http://localhost:8080", "http://localhost:3000")
-
     // Password policy
     val minPasswordLength: Int = dotenv["MIN_PASSWORD_LENGTH"]?.toIntOrNull() ?: 8
     val requireSpecialChars: Boolean = dotenv["REQUIRE_SPECIAL_CHARS"]?.toBoolean() ?: true
@@ -45,6 +40,14 @@ object SecureConfig {
     // Account lockout
     val maxLoginAttempts: Int = dotenv["MAX_LOGIN_ATTEMPTS"]?.toIntOrNull() ?: 5
     val lockoutDurationMinutes: Int = dotenv["LOCKOUT_DURATION_MINUTES"]?.toIntOrNull() ?: 30
+
+    // Email configuration - Updated for Hostinger
+    val emailHost: String = dotenv["EMAIL_HOST"] ?: "smtp.hostinger.com"
+    val emailPort: String = dotenv["EMAIL_PORT"] ?: "465" // Updated to use SSL port
+    val emailUsername: String = dotenv["EMAIL_USERNAME"] ?: "anaphygon@vinmedia.my.id"
+    val emailPassword: String = dotenv["EMAIL_PASSWORD"] ?: ""
+    val emailSender: String = dotenv["EMAIL_SENDER"] ?: "anaphygon@vinmedia.my.id"
+    val appBaseUrl: String = dotenv["APP_BASE_URL"] ?: "http://localhost:8080"
 
     private fun findEnvDirectory(): String {
         // Try to find .env file in various locations

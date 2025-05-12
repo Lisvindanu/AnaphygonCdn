@@ -83,6 +83,14 @@ function displayRoles(roles) {
             console.log("Admin role detected");
         }
     });
+    
+    // Add verified badge if user is verified
+    if (currentUser && currentUser.verified) {
+        const verifiedBadge = document.createElement('span');
+        verifiedBadge.className = 'badge verified';
+        verifiedBadge.innerHTML = '<i class="fas fa-check-circle"></i> Verified';
+        rolesDisplay.appendChild(verifiedBadge);
+    }
 }
 
 // Handle API responses

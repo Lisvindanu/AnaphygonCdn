@@ -1,4 +1,3 @@
-// src/main/kotlin/org/anaphygon/auth/controller/AuthController.kt
 package org.anaphygon.auth.controller
 
 import io.ktor.http.*
@@ -17,6 +16,7 @@ import org.anaphygon.auth.model.User
 import org.anaphygon.auth.service.JwtService
 import org.anaphygon.auth.service.UserRoleService
 import org.anaphygon.config.SecureConfig
+import org.anaphygon.email.EmailService
 import org.anaphygon.util.Logger
 import org.anaphygon.util.ValidationUtils
 import java.util.*
@@ -40,13 +40,15 @@ data class UserListItem(
     val email: String,
     val roles: Set<String>,
     val active: Boolean,
+    val verified: Boolean, // Added verified field
     val createdAt: Long,
     val lastLogin: Long?
 )
 
 class AuthController(
     private val userRoleService: UserRoleService,
-    private val jwtService: JwtService
+    private val jwtService: JwtService,
+    private val emailService: EmailService
 ) {
     private val logger = Logger("AuthController")
 
@@ -112,7 +114,24 @@ class AuthController(
                 logger.info("User authenticated successfully: ${user.username} with roles: ${user.roles}")
                 val token = jwtService.generateToken(user)
 
-                call.respond(HttpStatusCode.OK, buildAuthResponse(user, token))
+                // Add verified status to the response
+                val response = buildJsonObject {
+                    put("success", true)
+                    put("data", buildJsonObject {
+                        put("token", token)
+                        put("userId", user.id)
+                        put("username", user.username)
+                        put("verified", user.verified)
+                        put("roles", buildJsonObject {
+                            user.roles.forEachIndexed { index, role ->
+                                put(index.toString(), role)
+                            }
+                        })
+                    })
+                    put("error", null)
+                }
+
+                call.respondText(response.toString(), ContentType.Application.Json, HttpStatusCode.OK)
             } else {
                 // Authentication failed, increment attempt counter
                 attemptInfo.attempts.incrementAndGet()
@@ -170,11 +189,39 @@ class AuthController(
                 password = request.password
             )
 
-            val token = jwtService.generateToken(user)
+            // Create verification token and send email
+            val token = userRoleService.createVerificationToken(user.id)
+
+            try {
+                emailService.sendVerificationEmail(user.email, user.username, token)
+                logger.info("Verification email sent to ${user.email}")
+            } catch (e: Exception) {
+                logger.error("Failed to send verification email: ${e.message}", e)
+                // Continue registration process even if email fails
+            }
+
+            val authToken = jwtService.generateToken(user)
             logger.info("User registered successfully: ${user.username}")
 
-            call.respond(HttpStatusCode.Created, buildAuthResponse(user, token))
+            // Build response with verified status
+            val response = buildJsonObject {
+                put("success", true)
+                put("data", buildJsonObject {
+                    put("token", authToken)
+                    put("userId", user.id)
+                    put("username", user.username)
+                    put("verified", user.verified)
+                    put("roles", buildJsonObject {
+                        user.roles.forEachIndexed { index, role ->
+                            put(index.toString(), role)
+                        }
+                    })
+                    put("message", "Registration successful. Please check your email to verify your account.")
+                })
+                put("error", null)
+            }
 
+            call.respondText(response.toString(), ContentType.Application.Json, HttpStatusCode.Created)
         } catch (e: IllegalArgumentException) {
             logger.error("Registration validation error: ${e.message}")
             sendErrorResponse(call, e.message ?: "Registration failed", HttpStatusCode.BadRequest)
@@ -212,17 +259,6 @@ class AuthController(
         call.respond(HttpStatusCode.OK, jsonResponse)
     }
 
-//    @OptIn(ExperimentalSerializationApi::class)
-//    suspend fun getCsrfToken(call: ApplicationCall) {
-//        // The CSRF token is automatically set in cookie by the CSRF protection plugin
-//        val jsonResponse = buildJsonObject {
-//            put("success", true)
-//            put("data", JsonPrimitive("CSRF token set"))
-//            put("error", null)
-//        }
-//        call.respond(HttpStatusCode.OK, jsonResponse)
-//    }
-
     @OptIn(ExperimentalSerializationApi::class)
     suspend fun getAllUsers(call: ApplicationCall) {
         try {
@@ -247,6 +283,7 @@ class AuthController(
                     email = user.email,
                     roles = user.roles,
                     active = user.active,
+                    verified = user.verified, // Include verified status
                     createdAt = user.createdAt,
                     lastLogin = user.lastLogin
                 )
@@ -263,6 +300,7 @@ class AuthController(
                                 put("username", user.username)
                                 put("email", user.email)
                                 put("active", user.active)
+                                put("verified", user.verified) // Include verified status
                                 put("createdAt", user.createdAt)
                                 if (user.lastLogin != null) {
                                     put("lastLogin", user.lastLogin)
@@ -287,22 +325,6 @@ class AuthController(
             logger.error("Error retrieving user list: ${e.message}", e)
             sendErrorResponse(call, "Error retrieving user list: ${e.message}", HttpStatusCode.InternalServerError)
         }
-    }
-
-    @OptIn(ExperimentalSerializationApi::class)
-    private fun buildAuthResponse(user: User, token: String) = buildJsonObject {
-        put("success", true)
-        put("data", buildJsonObject {
-            put("token", token)
-            put("userId", user.id)
-            put("username", user.username)
-            put("roles", buildJsonObject {
-                user.roles.forEachIndexed { index, role ->
-                    put(index.toString(), role)
-                }
-            })
-        })
-        put("error", null)
     }
 
     @OptIn(ExperimentalSerializationApi::class)

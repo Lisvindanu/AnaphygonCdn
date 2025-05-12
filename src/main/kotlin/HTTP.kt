@@ -16,8 +16,11 @@ fun Application.configureHTTP() {
     }
 
     install(CORS) {
-        // For development, allow all origins
-        anyHost()
+        // For development, allow specific origins instead of any host
+        // anyHost()
+        allowHost("localhost:8080")
+        allowHost("127.0.0.1:8080")
+        allowHost("localhost:3000")  // If you're using a separate frontend dev server
 
         // For production, uncomment this and use SecureConfig
         // allowOrigins { origin -> origin in SecureConfig.allowedOrigins }

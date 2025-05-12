@@ -1,4 +1,3 @@
-// src/main/kotlin/org/anaphygon/Application.kt
 package org.anaphygon
 
 import io.ktor.server.application.*
@@ -9,6 +8,7 @@ import org.anaphygon.config.SecureConfig
 import org.anaphygon.plugin.configureH2Console
 import org.anaphygon.plugin.configureStatic
 import org.anaphygon.config.configureRouting
+import org.anaphygon.email.EmailService
 import org.anaphygon.security.configureCsrfProtection
 import org.anaphygon.security.configureRateLimiting
 import org.jetbrains.exposed.sql.Database
@@ -30,9 +30,13 @@ fun Application.module() {
     // Initialize database schema and run migrations FIRST
     DatabaseFactory.init(database)
 
-    // Initialize services
+    // Initialize auth schema SECOND
+    org.anaphygon.auth.db.DatabaseInit.init(database)
+
+    // Initialize services THIRD
     val userRoleService = UserRoleService(database)
     val jwtService = JwtService()
+    val emailService = EmailService()
 
     // Configure in correct order:
     // 1. Basic infrastructure
@@ -44,15 +48,12 @@ fun Application.module() {
 
     // 3. Security in correct order
     configureHTTP()  // CORS configuration
-//    configureCsrfProtection()
+    configureCsrfProtection()
     configureRateLimiting()
     configureAuth(jwtService)
 
-    // 4. Initialize user database after security is configured
-    org.anaphygon.auth.db.DatabaseInit.init(database)
-
-    // 5. Route configuration last
-    configureRouting(userRoleService, jwtService)
+    // 4. Route configuration last
+    configureRouting(userRoleService, jwtService, emailService)
     configureStatic()
     configureH2Console()
 

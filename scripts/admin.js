@@ -293,6 +293,7 @@ function displayUsers(usersData) {
           <h3><i class="fas fa-user"></i> ${user.username}</h3>
           <div class="user-roles">
             ${roleBadges}
+            ${user.verified ? '<span class="badge verified"><i class="fas fa-check-circle"></i> Verified</span>' : ''}
           </div>
         </div>
         <div class="user-details">

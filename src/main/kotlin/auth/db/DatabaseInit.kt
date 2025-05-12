@@ -7,22 +7,130 @@ import org.anaphygon.auth.service.UserRoleService
 import org.anaphygon.util.Logger
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.sql.statements.jdbc.JdbcConnectionImpl
+import org.jetbrains.exposed.sql.transactions.TransactionManager
+import java.sql.PreparedStatement
+import java.sql.ResultSet
+import java.sql.Statement
 import java.util.*
 
 object DatabaseInit {
     private val logger = Logger("DatabaseInit")
 
+    // Improved helper function for executing raw SQL
+    private fun <T> exec(
+        sql: String,
+        parameters: List<Any?> = emptyList(),
+        transform: ((ResultSet) -> T)? = null
+    ): T? {
+        val connection = (TransactionManager.current().connection as JdbcConnectionImpl).connection
+        
+        return connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS).use { stmt ->
+            // Set parameters
+            parameters.forEachIndexed { index, value ->
+                stmt.setObject(index + 1, value)
+            }
+            
+            // Execute the statement
+            if (transform != null) {
+                val rs = stmt.executeQuery()
+                rs.use { transform(it) }
+            } else {
+                stmt.executeUpdate()
+                null
+            }
+        }
+    }
+
     fun init(database: Database) {
         logger.info("Initializing database tables and default data")
 
         transaction(database) {
+            // Check if database is already initialized
+            val databaseInitialized = try {
+                exec<Boolean?>("SELECT COUNT(*) > 0 FROM users") { rs ->
+                    rs.next() && rs.getBoolean(1)
+                } ?: false
+            } catch (e: Exception) {
+                logger.info("Database appears to be empty or not initialized")
+                false
+            }
+
+            if (databaseInitialized) {
+                logger.info("Database already initialized, skipping default data creation")
+                
+                // Just make sure the schema is up to date
+                // Add tables in right order - first make sure verified exists in user table schema
+                try {
+                    exec<Unit>("ALTER TABLE users ADD COLUMN IF NOT EXISTS verified BOOLEAN DEFAULT FALSE")
+                    logger.info("Checked verified column in users table")
+                } catch (e: Exception) {
+                    logger.warn("Note: ${e.message}")
+                }
+
+                // Create tokens table if needed
+                try {
+                    exec<Unit>("""
+                        CREATE TABLE IF NOT EXISTS tokens (
+                            token VARCHAR(64) PRIMARY KEY,
+                            user_id VARCHAR(36) NOT NULL,
+                            type VARCHAR(20) NOT NULL,
+                            expires_at BIGINT NOT NULL,
+                            used BOOLEAN DEFAULT FALSE,
+                            created_at BIGINT DEFAULT 0
+                        )
+                    """)
+                    logger.info("Checked tokens table exists")
+                } catch (e: Exception) {
+                    logger.warn("Note: ${e.message}")
+                }
+
+                // Just create tables if they don't exist
+                SchemaUtils.createMissingTablesAndColumns(
+                    UsersTable,
+                    RolesTable,
+                    UserRolesTable,
+                    PermissionsTable,
+                    RolePermissionsTable,
+                    TokensTable
+                )
+                
+                return@transaction
+            }
+
+            // Add tables in right order - first make sure verified exists in user table schema
+            try {
+                exec<Unit>("ALTER TABLE users ADD COLUMN IF NOT EXISTS verified BOOLEAN DEFAULT FALSE")
+                logger.info("Added or checked verified column in users table")
+            } catch (e: Exception) {
+                logger.warn("Note: ${e.message}")
+            }
+
+            // Create tokens table if needed
+            try {
+                exec<Unit>("""
+                    CREATE TABLE IF NOT EXISTS tokens (
+                        token VARCHAR(64) PRIMARY KEY,
+                        user_id VARCHAR(36) NOT NULL,
+                        type VARCHAR(20) NOT NULL,
+                        expires_at BIGINT NOT NULL,
+                        used BOOLEAN DEFAULT FALSE,
+                        created_at BIGINT DEFAULT 0
+                    )
+                """)
+                logger.info("Created or verified tokens table exists")
+            } catch (e: Exception) {
+                logger.warn("Note: ${e.message}")
+            }
+
             // Create tables
             SchemaUtils.create(
                 UsersTable,
                 RolesTable,
                 UserRolesTable,
                 PermissionsTable,
-                RolePermissionsTable
+                RolePermissionsTable,
+                TokensTable
             )
 
             // Create default permissions
@@ -33,9 +141,13 @@ object DatabaseInit {
 
             // Create default admin user if needed
             createDefaultAdminUser()
-            
+
             // Create specific admin user
-            createSpecificAdminUser("lisvindanu015@gmail.com", "Lisvindanu", "Lisvindanu")
+            try {
+                createSpecificAdminUser("lisvindanu015@gmail.com", "Lisvindanu", "Lisvindanu")
+            } catch (e: Exception) {
+                logger.warn("Error creating specific admin user: ${e.message}")
+            }
         }
 
         logger.info("Database initialization completed")
@@ -121,14 +233,20 @@ object DatabaseInit {
             val adminId = UUID.randomUUID().toString()
             val hashedPassword = org.mindrot.jbcrypt.BCrypt.hashpw("admin", org.mindrot.jbcrypt.BCrypt.gensalt())
 
-            UsersTable.insert {
-                it[id] = adminId
-                it[username] = "admin"
-                it[email] = "admin@example.com"
-                it[passwordHash] = hashedPassword
-                it[active] = true
-                it[createdAt] = System.currentTimeMillis()
-            }
+            // Use direct SQL insert with all fields
+            exec<Unit>("""
+                INSERT INTO users (id, username, email, password_hash, active, created_at, verified) 
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+                listOf(
+                    adminId,
+                    "admin",
+                    "admin@example.com",
+                    hashedPassword,
+                    true,
+                    System.currentTimeMillis(),
+                    true
+                ))
 
             // Assign admin role
             UserRolesTable.insert {
@@ -139,53 +257,51 @@ object DatabaseInit {
             logger.info("Created default admin user (username: admin, password: admin)")
         }
     }
-    
+
     private fun createSpecificAdminUser(email: String, username: String, password: String) {
-        // Check if the specific admin user already exists
-        val userCount = UsersTable.selectAll()
-            .where { UsersTable.email eq email }
-            .count()
-            
-        if (userCount == 0L) {
-            // Create specific admin user
-            val userId = UUID.randomUUID().toString()
-            val hashedPassword = org.mindrot.jbcrypt.BCrypt.hashpw(password, org.mindrot.jbcrypt.BCrypt.gensalt())
-            
-            UsersTable.insert {
-                it[id] = userId
-                it[this.username] = username
-                it[this.email] = email
-                it[passwordHash] = hashedPassword
-                it[active] = true
-                it[createdAt] = System.currentTimeMillis()
+        try {
+            // Get the user by email using direct SQL to avoid verified column issues
+            val userId = exec<String?>("""
+                SELECT id FROM users WHERE email = ?
+            """, listOf(email)) { rs ->
+                if (rs.next()) rs.getString("id") else null
             }
-            
-            // Assign admin role
-            UserRolesTable.insert {
-                it[this.userId] = userId
-                it[roleName] = "ADMIN"
-            }
-            
-            // Verify role assignment
-            val roleCount = UserRolesTable.selectAll()
-                .where { (UserRolesTable.userId eq userId) and (UserRolesTable.roleName eq "ADMIN") }
-                .count()
-                
-            logger.info("Created specific admin user (email: $email, username: $username, role assigned: ${roleCount > 0})")
-        } else {
-            // User already exists, check if they have admin role
-            val existingUser = UsersTable.selectAll()
-                .where { UsersTable.email eq email }
-                .firstOrNull()
-                
-            if (existingUser != null) {
-                val userId = existingUser[UsersTable.id]
-                
-                // Check if user has admin role
-                val hasAdminRole = UserRolesTable.selectAll()
-                    .where { (UserRolesTable.userId eq userId) and (UserRolesTable.roleName eq "ADMIN") }
-                    .count() > 0
-                    
+
+            if (userId == null) {
+                // Create specific admin user
+                val newUserId = UUID.randomUUID().toString()
+                val hashedPassword = org.mindrot.jbcrypt.BCrypt.hashpw(password, org.mindrot.jbcrypt.BCrypt.gensalt())
+
+                // Use direct SQL insert with all fields
+                exec<Unit>("""
+                    INSERT INTO users (id, username, email, password_hash, active, created_at, verified) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                    listOf(
+                        newUserId,
+                        username,
+                        email,
+                        hashedPassword,
+                        true,
+                        System.currentTimeMillis(),
+                        true
+                    ))
+
+                // Assign admin role
+                UserRolesTable.insert {
+                    it[this.userId] = newUserId
+                    it[roleName] = "ADMIN"
+                }
+
+                logger.info("Created specific admin user (email: $email, username: $username)")
+            } else {
+                // User exists, check if they have admin role
+                val hasAdminRole = exec<Boolean?>("""
+                    SELECT COUNT(*) FROM user_roles WHERE user_id = ? AND role_name = 'ADMIN'
+                """, listOf(userId)) { rs ->
+                    rs.next() && rs.getLong(1) > 0
+                } ?: false
+
                 if (!hasAdminRole) {
                     // Add admin role
                     UserRolesTable.insert {
@@ -194,9 +310,12 @@ object DatabaseInit {
                     }
                     logger.info("Added ADMIN role to existing user: $email")
                 } else {
-                    logger.info("Specific admin user already exists (email: $email, username: ${existingUser[UsersTable.username]})")
+                    logger.info("User already has ADMIN role: $email")
                 }
             }
+        } catch (e: Exception) {
+            logger.error("Error in createSpecificAdminUser: ${e.message}")
+            throw e
         }
     }
 }

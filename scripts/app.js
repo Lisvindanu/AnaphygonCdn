@@ -4,7 +4,7 @@ let csrfToken = '';
 let currentUser = JSON.parse(localStorage.getItem('cdnUser')) || null;
 
 // Initialize the application state
-function initializeApp() {
+async function initializeApp() {
     const mainNav = document.getElementById('main-nav');
     const authNav = document.getElementById('auth-nav');
     const mobileToggle = document.getElementById('mobile-toggle');
@@ -56,6 +56,38 @@ function initializeApp() {
         // Public files section is available to all logged-in users
         document.getElementById('nav-public').classList.remove('hidden');
 
+        // Immediately check verification status from server and update UI
+        try {
+            const isVerified = await checkVerificationStatus();
+            
+            // Update user object with current verification status
+            if (currentUser.verified !== isVerified) {
+                currentUser.verified = isVerified;
+                localStorage.setItem('cdnUser', JSON.stringify(currentUser));
+                console.log("Updated user verification status to:", isVerified);
+                
+                // Refresh the roles display to show/hide verified badge
+                displayRoles(currentUser.roles);
+            }
+            
+            // Only show banner if actually not verified according to server
+            if (!isVerified) {
+                showVerificationStatusBanner();
+            } else {
+                // Remove any existing banner if user is verified
+                const existingBanner = document.querySelector('.verification-banner');
+                if (existingBanner) {
+                    existingBanner.remove();
+                }
+            }
+        } catch (error) {
+            console.error("Error checking verification status:", error);
+            // Fall back to stored value if server check fails
+            if (!currentUser.verified) {
+                showVerificationStatusBanner();
+            }
+        }
+
         showSection('files-section');
     } else {
         document.getElementById('auth-nav').classList.remove('hidden');
@@ -71,6 +103,19 @@ function initializeApp() {
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
-    initializeApp();
+    // Check for email verification token in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const verificationToken = urlParams.get('token');
+    
+    if (verificationToken) {
+        // If there's a verification token, handle it
+        verifyEmailFromUrl();
+    } else {
+        // Regular initialization - now async
+        initializeApp().catch(error => {
+            console.error("Error during app initialization:", error);
+        });
+    }
+    
     getCsrfToken();
 });

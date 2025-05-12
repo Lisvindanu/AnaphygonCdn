@@ -1,4 +1,3 @@
-// src/main/kotlin/org/anaphygon/auth/service/UserRoleService.kt
 package org.anaphygon.auth.service
 
 import kotlinx.coroutines.Dispatchers
@@ -19,7 +18,14 @@ class UserRoleService(private val database: Database) {
     // Initialize database tables and default roles
     suspend fun initialize() {
         dbQuery {
-            SchemaUtils.create(UsersTable, RolesTable, UserRolesTable, PermissionsTable, RolePermissionsTable)
+            SchemaUtils.create(
+                UsersTable,
+                RolesTable,
+                UserRolesTable,
+                PermissionsTable,
+                RolePermissionsTable,
+                TokensTable // Add TokensTable to schema creation
+            )
 
             // Create default permissions
             Permission.values().forEach { permission ->
@@ -94,6 +100,7 @@ class UserRoleService(private val database: Database) {
                 it[email] = "admin@example.com"
                 it[passwordHash] = hashedPassword
                 it[active] = true
+                it[verified] = true // Admin is automatically verified
                 it[createdAt] = System.currentTimeMillis()
             }
 
@@ -127,6 +134,7 @@ class UserRoleService(private val database: Database) {
                     it[this.email] = email
                     it[passwordHash] = hashedPassword
                     it[active] = true
+                    it[verified] = false // New users start unverified
                     it[createdAt] = System.currentTimeMillis()
                 }
 
@@ -180,6 +188,142 @@ class UserRoleService(private val database: Database) {
         }
     }
 
+    // Token creation for email verification
+    suspend fun createVerificationToken(userId: String): String {
+        return dbQuery {
+            val token = UUID.randomUUID().toString().replace("-", "")
+            val expiryTime = System.currentTimeMillis() + (24 * 60 * 60 * 1000) // 24 hours
+
+            // Delete any existing unused verification tokens for this user
+            TokensTable.deleteWhere {
+                (TokensTable.userId eq userId) and
+                        (TokensTable.type eq "VERIFICATION") and
+                        (TokensTable.used eq false)
+            }
+
+            // Create new token
+            TokensTable.insert {
+                it[TokensTable.token] = token
+                it[TokensTable.userId] = userId
+                it[TokensTable.type] = "VERIFICATION"
+                it[TokensTable.expiresAt] = expiryTime
+                it[TokensTable.createdAt] = System.currentTimeMillis()
+            }
+
+            logger.info("Created verification token for user $userId")
+            token
+        }
+    }
+
+    // Verify email with token
+    suspend fun verifyEmail(token: String): Boolean {
+        return dbQuery {
+            try {
+                // Find token
+                val tokenRow = TokensTable
+                    .selectAll()
+                    .where {
+                        (TokensTable.token eq token) and
+                                (TokensTable.type eq "VERIFICATION") and
+                                (TokensTable.used eq false) and
+                                (TokensTable.expiresAt greater System.currentTimeMillis())
+                    }
+                    .firstOrNull() ?: return@dbQuery false
+
+                // Mark token as used
+                TokensTable.update({ TokensTable.token eq token }) {
+                    it[used] = true
+                }
+
+                // Update user's verified status
+                val userId = tokenRow[TokensTable.userId]
+                val updated = UsersTable.update({ UsersTable.id eq userId }) {
+                    it[verified] = true
+                }
+
+                logger.info("Email verified for user $userId: ${updated > 0}")
+                updated > 0
+            } catch (e: Exception) {
+                logger.error("Error verifying email: ${e.message}", e)
+                false
+            }
+        }
+    }
+
+    // Check if user is verified
+    suspend fun isUserVerified(userId: String): Boolean {
+        return dbQuery {
+            UsersTable
+                .selectAll()
+                .where { (UsersTable.id eq userId) and (UsersTable.verified eq true) }
+                .count() > 0
+        }
+    }
+
+    // Password reset token creation
+    suspend fun createPasswordResetToken(userId: String): String {
+        return dbQuery {
+            val token = UUID.randomUUID().toString().replace("-", "")
+            val expiryTime = System.currentTimeMillis() + (60 * 60 * 1000) // 1 hour
+
+            // Delete any existing unused password reset tokens for this user
+            TokensTable.deleteWhere {
+                (TokensTable.userId eq userId) and
+                        (TokensTable.type eq "PASSWORD_RESET") and
+                        (TokensTable.used eq false)
+            }
+
+            // Create new token
+            TokensTable.insert {
+                it[TokensTable.token] = token
+                it[TokensTable.userId] = userId
+                it[TokensTable.type] = "PASSWORD_RESET"
+                it[TokensTable.expiresAt] = expiryTime
+                it[TokensTable.createdAt] = System.currentTimeMillis()
+            }
+
+            logger.info("Created password reset token for user $userId")
+            token
+        }
+    }
+
+    // Reset password with token
+    suspend fun resetPassword(token: String, newPassword: String): Boolean {
+        return dbQuery {
+            try {
+                // Find token
+                val tokenRow = TokensTable
+                    .selectAll()
+                    .where {
+                        (TokensTable.token eq token) and
+                                (TokensTable.type eq "PASSWORD_RESET") and
+                                (TokensTable.used eq false) and
+                                (TokensTable.expiresAt greater System.currentTimeMillis())
+                    }
+                    .firstOrNull() ?: return@dbQuery false
+
+                // Mark token as used
+                TokensTable.update({ TokensTable.token eq token }) {
+                    it[used] = true
+                }
+
+                // Update user's password
+                val userId = tokenRow[TokensTable.userId]
+                val hashedPassword = BCrypt.hashpw(newPassword, BCrypt.gensalt())
+
+                val updated = UsersTable.update({ UsersTable.id eq userId }) {
+                    it[passwordHash] = hashedPassword
+                }
+
+                logger.info("Password reset for user $userId: ${updated > 0}")
+                updated > 0
+            } catch (e: Exception) {
+                logger.error("Error resetting password: ${e.message}", e)
+                false
+            }
+        }
+    }
+
     suspend fun getUserById(id: String): User? {
         return dbQuery {
             UsersTable.selectAll().where { UsersTable.id eq id }
@@ -191,6 +335,14 @@ class UserRoleService(private val database: Database) {
     suspend fun getUserByUsername(username: String): User? {
         return dbQuery {
             UsersTable.selectAll().where { UsersTable.username eq username }
+                .firstOrNull()
+                ?.let { mapRowToUser(it) }
+        }
+    }
+
+    suspend fun getUserByEmail(email: String): User? {
+        return dbQuery {
+            UsersTable.selectAll().where { UsersTable.email eq email }
                 .firstOrNull()
                 ?.let { mapRowToUser(it) }
         }
@@ -329,6 +481,7 @@ class UserRoleService(private val database: Database) {
             passwordHash = row[UsersTable.passwordHash],
             roles = roles,
             active = row[UsersTable.active],
+            verified = row[UsersTable.verified], // Include verified status
             createdAt = row[UsersTable.createdAt],
             lastLogin = row[UsersTable.lastLogin]
         )

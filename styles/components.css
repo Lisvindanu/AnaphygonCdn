@@ -275,6 +275,11 @@ input:focus, select:focus {
     color: white;
 }
 
+.badge.verified {
+    background-color: #3498db;
+    color: white;
+}
+
 .active-badge {
     background-color: var(--success-color);
     color: white;
@@ -678,4 +683,90 @@ input:focus, select:focus {
     .files-grid {
         grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     }
+}
+
+/* Verification banner additional styles */
+.verification-banner {
+    width: 100%;
+    margin-bottom: 15px;
+    animation: slideDown 0.3s ease-in-out;
+}
+
+.verification-message i {
+    color: var(--warning-color);
+    font-size: 1.2rem;
+}
+
+.btn-link {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0 0 0 5px;
+    font: inherit;
+    color: var(--primary-color);
+    text-decoration: underline;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.btn-link:hover {
+    color: var(--primary-dark);
+}
+
+.btn-link:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+@keyframes slideDown {
+    0% {
+        transform: translateY(-100%);
+        opacity: 0;
+    }
+    100% {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* Verification status styles */
+.verification-loading, 
+.verification-success, 
+.verification-error {
+    text-align: center;
+    padding: 30px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+}
+
+.verification-loading i {
+    font-size: 3rem;
+    color: var(--primary-color);
+    margin-bottom: 15px;
+}
+
+.verification-success i {
+    font-size: 4rem;
+    color: var(--success-color);
+    margin-bottom: 15px;
+}
+
+.verification-error i {
+    font-size: 4rem;
+    color: var(--error-color);
+    margin-bottom: 15px;
+}
+
+.verification-actions {
+    margin-top: 25px;
+}
+
+.verification-success h3 {
+    color: var(--success-color);
+}
+
+.verification-error h3 {
+    color: var(--error-color);
 }

@@ -44,6 +44,8 @@ dependencies {
     // Add missing bcrypt dependency for password hashing
     implementation("org.mindrot:jbcrypt:0.4")
     implementation("org.jetbrains.exposed:exposed-java-time:0.41.1") // Use appropriate version
+    // Add JavaMail for email sending
+    implementation("com.sun.mail:javax.mail:1.6.2")
 
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.kotlin.test.junit)

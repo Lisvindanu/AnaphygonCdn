@@ -47,6 +47,11 @@ fun Application.configureStatic() {
         get("/") {
             call.respondFile(File("index.html"))
         }
+        
+        // Serve verify.html for email verification
+        get("/verify") {
+            call.respondFile(File("src/main/resources/static/verify.html"))
+        }
 
         // Serve static resources from styles directory
         static("/styles") {
@@ -61,6 +66,11 @@ fun Application.configureStatic() {
         // Serve files directly from the uploads directory
         static("/cdn") {
             files(uploadsDir)
+        }
+        
+        // Serve other static resources from the resources directory
+        static("/") {
+            resources("static")
         }
     }
 }

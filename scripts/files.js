@@ -395,9 +395,11 @@ function displayFiles(files) {
               <i class="fas fa-image"></i> Thumbnail
             </button>
           ` : ''}
-          <button onclick="toggleFileVisibility('${file.id}', ${!file.isPublic})" class="btn-secondary">
-            <i class="fas fa-${file.isPublic ? 'lock' : 'globe'}"></i> Make ${file.isPublic ? 'Private' : 'Public'}
-          </button>
+          ${isAdmin || (currentUser && file.userId === currentUser.id) ? `
+            <button onclick="toggleFileVisibility('${file.id}', ${!file.isPublic})" class="btn-secondary">
+              <i class="fas fa-${file.isPublic ? 'lock' : 'globe'}"></i> ${file.isPublic ? 'Make Private' : 'Request Public Access'}
+            </button>
+          ` : ''}
           <button onclick="deleteFile('${file.id}')" class="btn-danger">
             <i class="fas fa-trash"></i> Delete
           </button>
@@ -636,7 +638,11 @@ async function toggleFileVisibility(fileId, makePublic) {
         const data = await handleResponse(response);
 
         if (data.success) {
-            showMessage(`File is now ${makePublic ? 'public' : 'private'}. ${makePublic ? 'Awaiting moderation.' : ''}`);
+            if (makePublic) {
+                showMessage('Public access request submitted. Awaiting admin approval.');
+            } else {
+                showMessage('File is now private.');
+            }
             loadFiles(); // Refresh the files list
         } else {
             throw new Error(data.error || 'Failed to update file visibility');

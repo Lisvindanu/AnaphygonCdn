@@ -1,4 +1,3 @@
-// src/main/kotlin/org/anaphygon/auth/model/UserModels.kt
 package org.anaphygon.auth.model
 
 import kotlinx.serialization.Serializable
@@ -12,6 +11,7 @@ data class User(
     val passwordHash: String,
     val roles: Set<String> = setOf("USER"),
     val active: Boolean = true,
+    val verified: Boolean = false,  // Added verified field
     val createdAt: Long = System.currentTimeMillis(),
     val lastLogin: Long? = null
 )

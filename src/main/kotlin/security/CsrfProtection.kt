@@ -23,8 +23,10 @@ class CsrfProtection {
             "/api/auth/login",
             "/api/auth/register",
             "/api/auth/csrf",
-            "/api/files",  // Allow file operations without CSRF
-            "/cdn"  // Allow CDN access without CSRF
+            "/api/auth/resend-verification",
+            "/api/auth/verify",
+            "/api/files",
+            "/cdn"
         )
     }
 
@@ -100,6 +102,8 @@ fun Application.configureCsrfProtection() {
             "/api/auth/login",
             "/api/auth/register",
             "/api/auth/csrf",
+            "/api/auth/resend-verification",
+            "/api/auth/verify",
             "/api/files",
             "/cdn"
         )
