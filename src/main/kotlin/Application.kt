@@ -5,6 +5,8 @@ import io.ktor.server.application.*
 import org.anaphygon.auth.configureAuth
 import org.anaphygon.plugin.configureH2Console
 import org.anaphygon.plugin.configureStatic
+import org.anaphygon.config.configureRouting
+
 
 fun main(args: Array<String>) {
     io.ktor.server.netty.EngineMain.main(args)

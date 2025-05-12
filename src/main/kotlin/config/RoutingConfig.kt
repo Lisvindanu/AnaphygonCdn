@@ -8,7 +8,7 @@ import io.ktor.server.routing.*
 
 fun Application.configureRouting() {
     routing {
-        authRoutes() // Add this line
+        authRoutes()
         fileRoutes()
     }
 }
