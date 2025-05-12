@@ -359,6 +359,21 @@ function displayFiles(files) {
             html += `<p>Uploaded by: <span class="file-owner">${displayName}</span></p>`;
         }
 
+        // Show public/moderation status if applicable
+        if (file.isPublic) {
+            let statusBadge = '';
+            if (file.moderationStatus === 'PENDING') {
+                statusBadge = '<span class="badge pending">Pending Moderation</span>';
+            } else if (file.moderationStatus === 'APPROVED') {
+                statusBadge = '<span class="badge success">Public</span>';
+            } else if (file.moderationStatus === 'REJECTED') {
+                statusBadge = '<span class="badge error">Rejected</span>';
+            } else {
+                statusBadge = '<span class="badge success">Public</span>';
+            }
+            html += `<p>Status: ${statusBadge}</p>`;
+        }
+
         html += `
           <p>ID: ${file.id}</p>
           <p>Type: ${file.contentType || 'Unknown'}</p>
@@ -380,6 +395,9 @@ function displayFiles(files) {
               <i class="fas fa-image"></i> Thumbnail
             </button>
           ` : ''}
+          <button onclick="toggleFileVisibility('${file.id}', ${!file.isPublic})" class="btn-secondary">
+            <i class="fas fa-${file.isPublic ? 'lock' : 'globe'}"></i> Make ${file.isPublic ? 'Private' : 'Public'}
+          </button>
           <button onclick="deleteFile('${file.id}')" class="btn-danger">
             <i class="fas fa-trash"></i> Delete
           </button>
@@ -518,6 +536,112 @@ async function viewUserFiles(userId, username) {
         }
     } catch (error) {
         console.error("Error viewing user files:", error);
+        showMessage(error.message, true);
+    }
+}
+
+// Load public files
+async function loadPublicFiles() {
+    const button = document.getElementById('load-public-button');
+    button.disabled = true;
+    button.classList.add('loading');
+
+    try {
+        // Fetch public files
+        const response = await fetch('http://localhost:8080/api/files/public', {
+            method: 'GET'
+        });
+
+        const data = await handleResponse(response);
+
+        if (data.success && Array.isArray(data.data)) {
+            displayPublicFiles(data.data);
+        } else {
+            throw new Error(data.error || 'Failed to load public files');
+        }
+    } catch (error) {
+        console.error("Error loading public files:", error);
+        showMessage(error.message, true);
+    } finally {
+        button.disabled = false;
+        button.classList.remove('loading');
+    }
+}
+
+// Display public files
+function displayPublicFiles(files) {
+    const filesList = document.getElementById('public-files-list');
+
+    if (!files || files.length === 0) {
+        filesList.innerHTML = '<p class="empty-message">No public files found.</p>';
+        return;
+    }
+
+    let html = '';
+    files.forEach(file => {
+        const isImage = file.contentType && file.contentType.startsWith('image/');
+        const fileIcon = isImage ?
+            `<img src="http://localhost:8080/api/files/${file.id}/thumbnail" alt="${file.fileName}">` :
+            `<i class="fas fa-file fa-4x" style="color: var(--primary-color); margin: 20px 0;"></i>`;
+
+        html += `
+      <div class="file-card">
+        <div class="file-preview">
+          ${fileIcon}
+        </div>
+        <div class="file-details">
+          <h3>${file.fileName}</h3>
+          <p>Type: ${file.contentType || 'Unknown'}</p>
+          <p>Size: ${formatFileSize(file.size || 0)}</p>
+          <p>Uploaded: ${formatDate(file.uploadDate || Date.now())}</p>
+        </div>
+        <div class="file-actions">
+          <button onclick="viewFile('${file.id}', '${file.fileName}')" class="btn-primary">
+            <i class="fas fa-eye"></i> View
+          </button>
+          <button onclick="downloadFile('${file.id}', '${file.fileName}')" class="btn-primary">
+            <i class="fas fa-download"></i> Download
+          </button>
+        </div>
+      </div>`;
+    });
+
+    filesList.innerHTML = html;
+}
+
+// Toggle file visibility
+async function toggleFileVisibility(fileId, makePublic) {
+    if (!token) {
+        showMessage('Please login first!', true);
+        return;
+    }
+
+    try {
+        // Get CSRF token if not already present
+        if (!csrfToken) {
+            await getCsrfToken();
+        }
+
+        const response = await fetch(`http://localhost:8080/api/files/${fileId}/visibility`, {
+            method: 'PATCH',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'X-XSRF-TOKEN': csrfToken
+            },
+            body: JSON.stringify({ isPublic: makePublic }),
+            credentials: 'include'
+        });
+
+        const data = await handleResponse(response);
+
+        if (data.success) {
+            showMessage(`File is now ${makePublic ? 'public' : 'private'}. ${makePublic ? 'Awaiting moderation.' : ''}`);
+            loadFiles(); // Refresh the files list
+        } else {
+            throw new Error(data.error || 'Failed to update file visibility');
+        }
+    } catch (error) {
         showMessage(error.message, true);
     }
 }

@@ -379,3 +379,121 @@ function setupAdminFileManagement() {
         adminSection.appendChild(fileManagementCard);
     }
 }
+
+// Load pending files for moderation
+async function loadPendingFiles() {
+    const button = document.getElementById('load-pending-button');
+    button.disabled = true;
+    button.classList.add('loading');
+
+    try {
+        if (!token) {
+            throw new Error('Please login first!');
+        }
+
+        // Custom endpoint for admin to see pending files
+        const response = await fetch('http://localhost:8080/api/files?moderationStatus=PENDING&isPublic=true', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        const data = await handleResponse(response);
+
+        if (data.success && Array.isArray(data.data)) {
+            displayPendingFiles(data.data);
+        } else {
+            throw new Error(data.error || 'Failed to load pending files');
+        }
+    } catch (error) {
+        console.error("Error loading pending files:", error);
+        showMessage(error.message, true);
+    } finally {
+        button.disabled = false;
+        button.classList.remove('loading');
+    }
+}
+
+// Display pending files
+function displayPendingFiles(files) {
+    const filesList = document.getElementById('pending-files-list');
+
+    if (!files || files.length === 0) {
+        filesList.innerHTML = '<p class="empty-message">No files pending moderation.</p>';
+        return;
+    }
+
+    let html = '';
+    files.forEach(file => {
+        const isImage = file.contentType && file.contentType.startsWith('image/');
+        const fileIcon = isImage ?
+            `<img src="http://localhost:8080/api/files/${file.id}/thumbnail" alt="${file.fileName}">` :
+            `<i class="fas fa-file fa-4x" style="color: var(--primary-color); margin: 20px 0;"></i>`;
+
+        html += `
+      <div class="file-card">
+        <div class="file-preview">
+          ${fileIcon}
+        </div>
+        <div class="file-details">
+          <h3>${file.fileName}</h3>
+          <p>User ID: ${file.userId || 'Unknown'}</p>
+          <p>Type: ${file.contentType || 'Unknown'}</p>
+          <p>Size: ${formatFileSize(file.size || 0)}</p>
+          <p>Uploaded: ${formatDate(file.uploadDate || Date.now())}</p>
+          <p>Status: <span class="badge pending">Pending</span></p>
+        </div>
+        <div class="file-actions">
+          <button onclick="viewFile('${file.id}', '${file.fileName}')" class="btn-primary">
+            <i class="fas fa-eye"></i> View
+          </button>
+          <button onclick="moderateFile('${file.id}', 'APPROVED')" class="btn-success">
+            <i class="fas fa-check"></i> Approve
+          </button>
+          <button onclick="moderateFile('${file.id}', 'REJECTED')" class="btn-danger">
+            <i class="fas fa-times"></i> Reject
+          </button>
+        </div>
+      </div>`;
+    });
+
+    filesList.innerHTML = html;
+}
+
+// Moderate a file
+async function moderateFile(fileId, status) {
+    if (!token) {
+        showMessage('Please login first!', true);
+        return;
+    }
+
+    try {
+        // Get CSRF token if not already present
+        if (!csrfToken) {
+            await getCsrfToken();
+        }
+
+        const response = await fetch(`http://localhost:8080/api/files/${fileId}/moderate`, {
+            method: 'PATCH',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'X-XSRF-TOKEN': csrfToken
+            },
+            body: JSON.stringify({ status: status }),
+            credentials: 'include'
+        });
+
+        const data = await handleResponse(response);
+
+        if (data.success) {
+            showMessage(`File has been ${status.toLowerCase()}`);
+            loadPendingFiles(); // Refresh the pending files list
+        } else {
+            throw new Error(data.error || 'Failed to moderate file');
+        }
+    } catch (error) {
+        showMessage(error.message, true);
+    }
+}

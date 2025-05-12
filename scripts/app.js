@@ -53,11 +53,18 @@ function initializeApp() {
             usersNav.classList.add('hidden');
         }
 
+        // Public files section is available to all logged-in users
+        document.getElementById('nav-public').classList.remove('hidden');
+
         showSection('files-section');
     } else {
         document.getElementById('auth-nav').classList.remove('hidden');
         document.getElementById('main-nav').classList.add('hidden');
         document.getElementById('user-info').classList.add('hidden');
+        
+        // Hide the public files nav when logged out
+        document.getElementById('nav-public').classList.add('hidden');
+        
         showSection('login-section');
     }
 }

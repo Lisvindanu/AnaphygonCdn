@@ -23,6 +23,7 @@
     <nav class="navbar hidden" id="main-nav">
       <a href="#" onclick="showSection('upload-section')" id="nav-upload"><i class="fas fa-upload"></i> Upload</a>
       <a href="#" onclick="showSection('files-section')" id="nav-files"><i class="fas fa-file"></i> Files</a>
+      <a href="#" onclick="showSection('public-files-section')" id="nav-public"><i class="fas fa-globe"></i> Public</a>
       <a href="#" onclick="showSection('users-section')" id="nav-users" class="hidden"><i class="fas fa-users"></i> Users</a>
       <a href="#" onclick="showSection('admin-section')" id="nav-admin" class="hidden"><i class="fas fa-cog"></i> Admin</a>
       <a href="#" id="logout-link" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Logout</a>
@@ -116,6 +117,18 @@
       </div>
     </div>
 
+    <div id="public-files-section" class="container hidden">
+      <h2><i class="fas fa-globe"></i> Public Files</h2>
+      <div class="action-bar">
+        <button onclick="loadPublicFiles()" id="load-public-button" class="btn-secondary">
+          <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+      </div>
+      <div id="public-files-list" class="files-grid">
+        <p class="empty-message">Click "Refresh" to load public files...</p>
+      </div>
+    </div>
+
     <div id="admin-section" class="container hidden">
       <h2><i class="fas fa-cog"></i> Admin Panel</h2>
       <div class="admin-card">
@@ -125,6 +138,15 @@
           <i class="fas fa-info-circle"></i> Load System Info
         </button>
         <div id="system-info"></div>
+      </div>
+      
+      <div class="admin-card">
+        <h3><i class="fas fa-shield-alt"></i> File Moderation</h3>
+        <p>Review and moderate files that users have made public.</p>
+        <button onclick="loadPendingFiles()" id="load-pending-button" class="btn-secondary">
+          <i class="fas fa-clipboard-check"></i> Load Pending Files
+        </button>
+        <div id="pending-files-list" class="files-grid"></div>
       </div>
     </div>
 

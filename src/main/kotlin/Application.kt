@@ -12,6 +12,7 @@ import org.anaphygon.config.configureRouting
 import org.anaphygon.security.configureCsrfProtection
 import org.anaphygon.security.configureRateLimiting
 import org.jetbrains.exposed.sql.Database
+import org.anaphygon.data.db.DatabaseFactory
 
 fun main(args: Array<String>) {
     io.ktor.server.netty.EngineMain.main(args)
@@ -26,6 +27,9 @@ fun Application.module() {
         password = SecureConfig.dbPassword
     )
 
+    // Initialize database schema and run migrations FIRST
+    DatabaseFactory.init(database)
+
     // Initialize services
     val userRoleService = UserRoleService(database)
     val jwtService = JwtService()
@@ -34,19 +38,19 @@ fun Application.module() {
     // 1. Basic infrastructure
     configureSerialization()
     configureDatabases()
-    
+
     // 2. Monitoring (before request handling)
     configureMonitoring()
-    
+
     // 3. Security in correct order
     configureHTTP()  // CORS configuration
 //    configureCsrfProtection()
     configureRateLimiting()
     configureAuth(jwtService)
-    
-    // 4. Initialize database after security is configured
+
+    // 4. Initialize user database after security is configured
     org.anaphygon.auth.db.DatabaseInit.init(database)
-    
+
     // 5. Route configuration last
     configureRouting(userRoleService, jwtService)
     configureStatic()

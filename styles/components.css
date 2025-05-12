@@ -60,7 +60,7 @@
 }
 
 /* Buttons */
-button, .btn-primary, .btn-secondary, .btn-danger {
+button, .btn-primary, .btn-secondary, .btn-danger, .btn-success {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -105,6 +105,18 @@ button, .btn-primary, .btn-secondary, .btn-danger {
 .btn-danger:hover {
     background-color: #d32f2f;
     box-shadow: 0 5px 12px rgba(244, 67, 54, 0.3);
+    transform: translateY(-2px);
+}
+
+.btn-success {
+    background-color: var(--success-color);
+    color: white;
+    box-shadow: 0 3px 8px rgba(76, 175, 80, 0.2);
+}
+
+.btn-success:hover {
+    background-color: #3d8b40;
+    box-shadow: 0 5px 12px rgba(76, 175, 80, 0.3);
     transform: translateY(-2px);
 }
 
@@ -245,6 +257,21 @@ input:focus, select:focus {
 
 .badge.user {
     background-color: var(--success-color);
+    color: white;
+}
+
+.badge.pending {
+    background-color: var(--warning-color);
+    color: white;
+}
+
+.badge.success {
+    background-color: var(--success-color);
+    color: white;
+}
+
+.badge.error {
+    background-color: var(--error-color);
     color: white;
 }
 

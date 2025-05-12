@@ -16,7 +16,14 @@ import java.sql.DriverManager
 import java.util.*
 import kotlinx.serialization.Serializable
 import org.anaphygon.config.SecureConfig
+import org.anaphygon.data.db.DatabaseFactory
+import org.anaphygon.data.db.FileMetaTable
 import org.anaphygon.util.ValidationUtils
+import org.jetbrains.exposed.sql.SortOrder
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.selectAll
+import org.jetbrains.exposed.sql.update
 
 @Serializable
 data class FileUploadStats(
@@ -107,6 +114,70 @@ class FileService {
             """
             stmt.execute(sql)
             logger.info("Created file_meta table successfully")
+        }
+    }
+
+    suspend fun getPublicFiles(page: Int = 1, pageSize: Int = 20): List<FileMeta> {
+        return DatabaseFactory.dbQuery {
+            FileMetaTable.selectAll()
+                .where { (FileMetaTable.isPublic eq true) and (FileMetaTable.moderationStatus eq "APPROVED") }
+                .orderBy(FileMetaTable.uploadDate, SortOrder.DESC)
+                .limit(pageSize).offset(start = ((page - 1) * pageSize).toLong())
+                .map { FileMetaTable.toFileMeta(it) }
+        }
+    }
+
+    // Update the visibility of a file
+    suspend fun updateFileVisibility(fileId: String, isPublic: Boolean): Boolean {
+        return DatabaseFactory.dbQuery {
+            val updatedRows = FileMetaTable.update({ FileMetaTable.id eq fileId }) {
+                it[FileMetaTable.isPublic] = isPublic
+                it[FileMetaTable.moderationStatus] = "PENDING" // Reset moderation when visibility changes
+            }
+            updatedRows > 0
+        }
+    }
+
+//    suspend fun moderateFile(fileId: String, status: String): Boolean {
+//        return DatabaseFactory.dbQuery {
+//            val updatedRows = FileMetaTable.update({ FileMetaTable.id eq fileId }) {
+//                it[FileMetaTable.moderationStatus] = status
+//            }
+//            updatedRows > 0
+//        }
+//    }
+
+    // Add this as an alternative implementation in your FileService.kt
+    suspend fun moderateFile(fileId: String, status: String): Boolean {
+        return try {
+            // First try with Exposed
+            DatabaseFactory.dbQuery {
+                val updatedRows = FileMetaTable.update({ FileMetaTable.id eq fileId }) {
+                    it[FileMetaTable.moderationStatus] = status
+                }
+                updatedRows > 0
+            }
+        } catch (e: Exception) {
+            // Fallback to direct SQL if the Exposed method fails
+            withContext(Dispatchers.IO) {
+                try {
+                    DriverManager.getConnection(dbUrl, dbUser, dbPassword).use { conn ->
+                        val sql = "UPDATE file_meta SET moderation_status = ? WHERE id = ?"
+                        conn.prepareStatement(sql).use { stmt ->
+                            stmt.setString(1, status)
+                            stmt.setString(2, fileId)
+
+                            val rows = stmt.executeUpdate()
+                            logger.info("File moderation status updated: $rows row(s) affected")
+                            rows > 0
+                        }
+                    }
+                } catch (e: Exception) {
+                    logger.error("Error updating moderation status: ${e.message}")
+                    e.printStackTrace()
+                    false
+                }
+            }
         }
     }
 

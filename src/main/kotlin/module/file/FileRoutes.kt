@@ -7,6 +7,7 @@ import io.ktor.server.auth.*
 import io.ktor.server.auth.jwt.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import io.ktor.server.request.*
 import org.anaphygon.util.ResponseWrapper
 import io.ktor.util.AttributeKey
 import kotlinx.serialization.json.buildJsonObject
@@ -28,7 +29,39 @@ fun Route.fileRoutes() {
             call.respond(HttpStatusCode.OK)
         }
 
-        // Public endpoints
+        // Public endpoint to fetch all public and approved files
+        get("/public") {
+            try {
+                val page = call.request.queryParameters["page"]?.toIntOrNull() ?: 1
+                val pageSize = call.request.queryParameters["pageSize"]?.toIntOrNull() ?: 20
+
+                val files = fileService.getPublicFiles(page, pageSize)
+
+                // Create JSON response with files
+                val response = buildJsonObject {
+                    put("success", true)
+                    put("data", buildJsonArray {
+                        files.forEach { file ->
+                            add(buildJsonObject {
+                                put("id", file.id)
+                                put("fileName", file.fileName)
+                                put("contentType", file.contentType)
+                                put("size", file.size)
+                                put("uploadDate", file.uploadDate)
+                                put("userId", file.userId ?: "")
+                            })
+                        }
+                    })
+                    put("error", null)
+                }
+
+                call.respondText(response.toString(), ContentType.Application.Json)
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.InternalServerError, ResponseWrapper.error(e.message ?: "Error retrieving public files"))
+            }
+        }
+
+        // Public endpoints for individual files
         get("/{id}") {
             fileController.getFile(call)
         }
@@ -49,6 +82,92 @@ fun Route.fileRoutes() {
 
         // Protected endpoints for file management
         authenticate("auth-jwt") {
+            // User route to update visibility of their own files
+            patch("/{id}/visibility") {
+                val fileId = call.parameters["id"] ?: return@patch call.respond(
+                    HttpStatusCode.BadRequest, ResponseWrapper.error("File ID required")
+                )
+
+                try {
+                    // Get user ID from JWT
+                    val principal = call.principal<JWTPrincipal>()
+                    val userId = principal?.payload?.getClaim("id")?.asString()
+
+                    // Get file to check ownership
+                    val file = fileService.getFileInfo(fileId)
+
+                    if (file == null) {
+                        call.respond(HttpStatusCode.NotFound, ResponseWrapper.error("File not found"))
+                        return@patch
+                    }
+
+                    // Verify owner or admin
+                    val roles = principal?.payload?.getClaim("roles")?.asList(String::class.java) ?: emptyList()
+                    val isAdmin = roles.contains("ADMIN")
+
+                    if (file.userId != userId && !isAdmin) {
+                        call.respond(HttpStatusCode.Forbidden, ResponseWrapper.error("You don't have permission to modify this file"))
+                        return@patch
+                    }
+
+                    // Get visibility from request body
+                    val request = call.receive<Map<String, Boolean>>()
+                    val isPublic = request["isPublic"] ?: false
+
+                    // Update visibility
+                    val success = fileService.updateFileVisibility(fileId, isPublic)
+
+                    if (success) {
+                        call.respond(HttpStatusCode.OK, ResponseWrapper.success("File visibility updated successfully"))
+                    } else {
+                        call.respond(HttpStatusCode.InternalServerError, ResponseWrapper.error("Failed to update file visibility"))
+                    }
+                } catch (e: Exception) {
+                    call.respond(HttpStatusCode.InternalServerError, ResponseWrapper.error(e.message ?: "Error updating file visibility"))
+                }
+            }
+
+            // Admin route for moderation
+            patch("/{id}/moderate") {
+                val fileId = call.parameters["id"] ?: return@patch call.respond(
+                    HttpStatusCode.BadRequest, ResponseWrapper.error("File ID required")
+                )
+
+                try {
+                    // Verify admin
+                    val principal = call.principal<JWTPrincipal>()
+                    val roles = principal?.payload?.getClaim("roles")?.asList(String::class.java) ?: emptyList()
+
+                    if (!roles.contains("ADMIN")) {
+                        call.respond(HttpStatusCode.Forbidden, ResponseWrapper.error("Admin access required"))
+                        return@patch
+                    }
+
+                    // Get status from request body
+                    val request = call.receive<Map<String, String>>()
+                    val status = request["status"] ?: return@patch call.respond(
+                        HttpStatusCode.BadRequest, ResponseWrapper.error("Status required")
+                    )
+
+                    // Validate status
+                    if (status !in listOf("APPROVED", "REJECTED", "PENDING")) {
+                        call.respond(HttpStatusCode.BadRequest, ResponseWrapper.error("Invalid status. Must be APPROVED, REJECTED, or PENDING"))
+                        return@patch
+                    }
+
+                    // Update moderation status
+                    val success = fileService.moderateFile(fileId, status)
+
+                    if (success) {
+                        call.respond(HttpStatusCode.OK, ResponseWrapper.success("File moderation status updated successfully"))
+                    } else {
+                        call.respond(HttpStatusCode.InternalServerError, ResponseWrapper.error("Failed to update moderation status"))
+                    }
+                } catch (e: Exception) {
+                    call.respond(HttpStatusCode.InternalServerError, ResponseWrapper.error(e.message ?: "Error updating moderation status"))
+                }
+            }
+
             // Get user's files or all files if admin
             get {
                 try {
@@ -87,6 +206,8 @@ fun Route.fileRoutes() {
                                     put("size", file.size)
                                     put("uploadDate", file.uploadDate)
                                     file.userId?.let { put("userId", it) }
+                                    put("isPublic", file.isPublic ?: false)
+                                    put("moderationStatus", file.moderationStatus ?: "PENDING")
                                 })
                             }
                         })
@@ -129,6 +250,8 @@ fun Route.fileRoutes() {
                                         put("size", file.size)
                                         put("uploadDate", file.uploadDate)
                                         file.userId?.let { put("userId", it) }
+                                        put("isPublic", file.isPublic ?: false)
+                                        put("moderationStatus", file.moderationStatus ?: "PENDING")
                                     })
                                 }
                             })
