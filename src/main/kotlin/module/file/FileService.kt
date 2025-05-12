@@ -46,8 +46,8 @@ class FileService {
             directory.mkdirs()
         }
 
-        // Reset database
-        resetDatabase()
+        // Initialize database instead of resetting it
+        initializeDatabase()
     }
 
     private val imageTransformer = ImageTransformer()
@@ -59,6 +59,54 @@ class FileService {
             logger.info("FileService initialized with metrics: ${fileMetrics != null}")
         } catch (e: Exception) {
             logger.error("Error initializing metrics: ${e.message}", e)
+        }
+    }
+
+    private fun initializeDatabase() {
+        try {
+            // Ensure H2 driver is loaded
+            Class.forName("org.h2.Driver")
+
+            // Get connection
+            DriverManager.getConnection(dbUrl, dbUser, dbPassword).use { conn ->
+                // Check if table exists
+                val tableExists = tableExists(conn, "file_meta")
+
+                // Only create table if it doesn't exist
+                if (!tableExists) {
+                    createTable(conn)
+                    logger.info("Created file_meta table")
+                } else {
+                    logger.info("file_meta table already exists")
+                }
+            }
+        } catch (e: Exception) {
+            logger.error("Error initializing database: ${e.message}")
+            e.printStackTrace()
+        }
+    }
+
+    private fun tableExists(conn: Connection, tableName: String): Boolean {
+        val dbMetadata = conn.metaData
+        val rs = dbMetadata.getTables(null, null, tableName.uppercase(), null)
+        return rs.next()
+    }
+
+    private fun createTable(conn: Connection) {
+        conn.createStatement().use { stmt ->
+            val sql = """
+                CREATE TABLE file_meta (
+                    id VARCHAR(36) PRIMARY KEY,
+                    file_name VARCHAR(255) NOT NULL,
+                    stored_file_name VARCHAR(255) NOT NULL,
+                    content_type VARCHAR(100) NOT NULL,
+                    file_size BIGINT NOT NULL,
+                    upload_date BIGINT NOT NULL,
+                    user_id VARCHAR(36)
+                )
+            """
+            stmt.execute(sql)
+            logger.info("Created file_meta table successfully")
         }
     }
 
@@ -96,6 +144,45 @@ class FileService {
         }
     }
 
+    // Add this method to FileService.kt class
+    suspend fun getFilesByUserId(userId: String): List<FileMeta> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val result = mutableListOf<FileMeta>()
+
+                DriverManager.getConnection(dbUrl, dbUser, dbPassword).use { conn ->
+                    val sql = "SELECT * FROM file_meta WHERE user_id = ? ORDER BY upload_date DESC"
+                    conn.prepareStatement(sql).use { stmt ->
+                        stmt.setString(1, userId)
+
+                        stmt.executeQuery().use { rs ->
+                            while (rs.next()) {
+                                result.add(
+                                    FileMeta(
+                                        id = rs.getString("id"),
+                                        fileName = rs.getString("file_name"),
+                                        storedFileName = rs.getString("stored_file_name"),
+                                        contentType = rs.getString("content_type"),
+                                        size = rs.getLong("file_size"),
+                                        uploadDate = rs.getLong("upload_date"),
+                                        userId = rs.getString("user_id")
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+
+                logger.info("Found ${result.size} files for user $userId")
+                result
+            } catch (e: Exception) {
+                logger.error("Error getting files for user $userId: ${e.message}")
+                e.printStackTrace()
+                emptyList()
+            }
+        }
+    }
+
     suspend fun resizeImage(fileId: String, width: Int, height: Int): FileData? {
         return withContext(Dispatchers.IO) {
             try {
@@ -127,50 +214,6 @@ class FileService {
                 e.printStackTrace()
                 null
             }
-        }
-    }
-
-    private fun resetDatabase() {
-        try {
-            // Ensure H2 driver is loaded
-            Class.forName("org.h2.Driver")
-
-            // Get connection
-            DriverManager.getConnection(dbUrl, dbUser, dbPassword).use { conn ->
-                // Drop existing table if exists
-                dropTableIfExists(conn)
-
-                // Create new table with correct column names
-                createTable(conn)
-            }
-        } catch (e: Exception) {
-            logger.error("Error initializing database: ${e.message}")
-            e.printStackTrace()
-        }
-    }
-
-    private fun dropTableIfExists(conn: Connection) {
-        conn.createStatement().use { stmt ->
-            stmt.execute("DROP TABLE IF EXISTS file_meta")
-            logger.info("Dropped existing file_meta table if it existed")
-        }
-    }
-
-    private fun createTable(conn: Connection) {
-        conn.createStatement().use { stmt ->
-            val sql = """
-                CREATE TABLE file_meta (
-                    id VARCHAR(36) PRIMARY KEY,
-                    file_name VARCHAR(255) NOT NULL,
-                    stored_file_name VARCHAR(255) NOT NULL,
-                    content_type VARCHAR(100) NOT NULL,
-                    file_size BIGINT NOT NULL,
-                    upload_date BIGINT NOT NULL,
-                    user_id VARCHAR(36)
-                )
-            """
-            stmt.execute(sql)
-            logger.info("Created file_meta table successfully")
         }
     }
 
@@ -547,15 +590,15 @@ class FileService {
                 var totalSize = 0L
                 val fileTypes = mutableMapOf<String, Int>()
                 var lastUpload: Long? = null
-                
+
                 // Don't try to query users table at all - we'll get username from the client side
-                
+
                 // Get files for this user
                 DriverManager.getConnection(dbUrl, dbUser, dbPassword).use { conn ->
                     val sql = "SELECT * FROM file_meta WHERE user_id = ? ORDER BY upload_date DESC"
                     conn.prepareStatement(sql).use { stmt ->
                         stmt.setString(1, userId)
-                        
+
                         stmt.executeQuery().use { rs ->
                             while (rs.next()) {
                                 val file = FileMeta(
@@ -567,14 +610,14 @@ class FileService {
                                     uploadDate = rs.getLong("upload_date"),
                                     userId = rs.getString("user_id")
                                 )
-                                
+
                                 files.add(file)
                                 totalSize += file.size
-                                
+
                                 // Track file types
                                 val extension = file.fileName.substringAfterLast('.', "unknown")
                                 fileTypes[extension] = fileTypes.getOrDefault(extension, 0) + 1
-                                
+
                                 // Track last upload
                                 if (lastUpload == null || file.uploadDate > lastUpload!!) {
                                     lastUpload = file.uploadDate
@@ -583,7 +626,7 @@ class FileService {
                         }
                     }
                 }
-                
+
                 FileUploadStats(
                     userId = userId,
                     username = null, // Don't provide username from backend
@@ -606,19 +649,19 @@ class FileService {
             }
         }
     }
-    
+
     suspend fun getAllFileStats(): List<FileUploadStats> {
         return withContext(Dispatchers.IO) {
             try {
                 val userFiles = mutableMapOf<String?, MutableList<FileMeta>>()
-                
+
                 DriverManager.getConnection(dbUrl, dbUser, dbPassword).use { conn ->
                     // Get all files without joining the users table
                     val sql = """
                         SELECT * FROM file_meta
                         ORDER BY upload_date DESC
                     """
-                    
+
                     conn.createStatement().use { stmt ->
                         stmt.executeQuery(sql).use { rs ->
                             while (rs.next()) {
@@ -632,37 +675,37 @@ class FileService {
                                     uploadDate = rs.getLong("upload_date"),
                                     userId = userId
                                 )
-                                
+
                                 val files = userFiles.getOrPut(userId) { mutableListOf() }
                                 files.add(file)
                             }
                         }
                     }
                 }
-                
+
                 // Create stats for each user
                 val userStats = mutableListOf<FileUploadStats>()
-                
+
                 for ((userId, files) in userFiles) {
                     // Don't try to get username - let the frontend handle it
-                    
+
                     var totalSize = 0L
                     val fileTypes = mutableMapOf<String, Int>()
                     var lastUpload: Long? = null
-                    
+
                     for (file in files) {
                         totalSize += file.size
-                        
+
                         // Track file types
                         val extension = file.fileName.substringAfterLast('.', "unknown")
                         fileTypes[extension] = fileTypes.getOrDefault(extension, 0) + 1
-                        
+
                         // Track last upload
                         if (lastUpload == null || file.uploadDate > lastUpload!!) {
                             lastUpload = file.uploadDate
                         }
                     }
-                    
+
                     userStats.add(
                         FileUploadStats(
                             userId = userId,
@@ -675,7 +718,7 @@ class FileService {
                         )
                     )
                 }
-                
+
                 userStats
             } catch (e: Exception) {
                 logger.error("Error getting file stats for all users: ${e.message}")

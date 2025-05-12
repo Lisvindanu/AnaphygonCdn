@@ -15,7 +15,8 @@ object ValidationUtils {
     private val USERNAME_PATTERN = Pattern.compile("^[a-zA-Z0-9_]{3,50}$")
 
     // Password validation
-    private val SPECIAL_CHARS_PATTERN = Pattern.compile("[!@#$%^&*(),.?\":{}|<>]")
+    // Password validation
+    private val SPECIAL_CHARS_PATTERN = Pattern.compile("[!@#$%^&*(),.?\":{}|<>_]")
     private val NUMBERS_PATTERN = Pattern.compile("[0-9]")
     private val UPPERCASE_PATTERN = Pattern.compile("[A-Z]")
 

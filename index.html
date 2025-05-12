@@ -413,8 +413,11 @@
   </form>
 </div>
 
+<!--// In index.html, modify the files-section div-->
+
 <div id="files-section" class="container hidden">
-  <h2>Your Files</h2>
+  <h2>Show Files</h2>
+  <p>You can view and manage files you've uploaded here.</p>
   <button onclick="loadFiles()" id="refresh-button">Refresh Files</button>
   <div id="files-list">
     <p>Click "Refresh Files" to load your files...</p>
@@ -437,7 +440,15 @@
   <div id="users-list" class="users-container">
     <p>Click "Load Users" to see all registered users.</p>
   </div>
+
+  <div class="admin-card">
+    <h3>File Management</h3>
+    <p>As an administrator, you can view and manage all files in the system.</p>
+    <button onclick="loadFiles()" id="admin-view-files-button">View All Files</button>
+  </div>
 </div>
+
+
 
 <script>
   // Global variables
@@ -446,13 +457,14 @@
   let currentUser = JSON.parse(localStorage.getItem('cdnUser')) || null;
 
   // Initialize the application state
+  // Update your initializeApp function to include this logic
   function initializeApp() {
     if (token && currentUser) {
       document.getElementById('auth-nav').classList.add('hidden');
       document.getElementById('main-nav').classList.remove('hidden');
       document.getElementById('user-info').classList.remove('hidden');
       document.getElementById('username-display').textContent = currentUser.username;
-      
+
       // Ensure roles is an array
       if (!currentUser.roles) {
         currentUser.roles = [];
@@ -462,33 +474,80 @@
         // Handle case when roles is an object (from JSON)
         currentUser.roles = Object.values(currentUser.roles);
       }
-      
+
       console.log("Current user:", currentUser);
       displayRoles(currentUser.roles);
-      
+
       // Check for admin privileges - safer check for ADMIN role
-      const hasAdminRole = Array.isArray(currentUser.roles) && 
-                          currentUser.roles.some(role => role === 'ADMIN');
-      
+      const hasAdminRole = Array.isArray(currentUser.roles) &&
+              currentUser.roles.some(role => role === 'ADMIN');
+
       // Show admin sections if user has admin role
       const adminNav = document.getElementById('nav-admin');
       const usersNav = document.getElementById('nav-users');
-      
+
       if (hasAdminRole) {
         adminNav.classList.remove('hidden');
         usersNav.classList.remove('hidden');
+
+        // Also update the admin section content when they're an admin
+        setupAdminFileManagement();
+
         console.log("Admin navigation enabled");
       } else {
         adminNav.classList.add('hidden');
         usersNav.classList.add('hidden');
       }
-      
+
       showSection('files-section');
     } else {
       document.getElementById('auth-nav').classList.remove('hidden');
       document.getElementById('main-nav').classList.add('hidden');
       document.getElementById('user-info').classList.add('hidden');
       showSection('login-section');
+    }
+  }
+
+  // Add this function to set up the admin file management UI
+  function setupAdminFileManagement() {
+    // Get the admin section container
+    const adminSection = document.getElementById('admin-section');
+
+    // Check if the file management card already exists
+    if (!document.getElementById('admin-file-management-card')) {
+      // Create the file management card
+      const fileManagementCard = document.createElement('div');
+      fileManagementCard.id = 'admin-file-management-card';
+      fileManagementCard.className = 'admin-card';
+      fileManagementCard.innerHTML = `
+      <h3>File Management</h3>
+      <p>As an administrator, you can view and manage all files in the system.</p>
+      <button onclick="loadAllFiles()" id="admin-view-files-button">View All Files</button>
+      <div id="admin-files-list" class="hidden"></div>
+    `;
+
+      // Add it to the admin section
+      adminSection.appendChild(fileManagementCard);
+    }
+  }
+
+  // Add this function to load all files for admins
+  function loadAllFiles() {
+    const button = document.getElementById('admin-view-files-button');
+    button.disabled = true;
+    button.textContent = 'Loading...';
+
+    try {
+      loadFiles(); // Use the existing loadFiles function
+
+      // Show the files section to display the results
+      showSection('files-section');
+    } catch (error) {
+      console.error("Error loading all files:", error);
+      showMessage(error.message, true);
+    } finally {
+      button.disabled = false;
+      button.textContent = 'View All Files';
     }
   }
 
@@ -700,23 +759,60 @@
       const email = document.getElementById('register-email').value;
       const password = document.getElementById('register-password').value;
 
+      console.log("Attempting to register with:", { username, email, password: "***" });
+
+      // Try to get CSRF token
+      try {
+        await getCsrfToken();
+        console.log("CSRF token obtained:", csrfToken);
+      } catch (e) {
+        console.warn("Failed to get CSRF token, continuing without it:", e);
+      }
+
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+
+      // Add CSRF token if available
+      if (csrfToken) {
+        headers['X-XSRF-TOKEN'] = csrfToken;
+      }
+
+      console.log("Sending registration request with headers:", headers);
+
       const response = await fetch('http://localhost:8080/api/auth/register', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: headers,
         body: JSON.stringify({ username, email, password }),
         credentials: 'include'
       });
 
-      const data = await handleResponse(response);
-      
-      // Log the full response for debugging
-      console.log("Full register response:", data);
+      console.log("Registration response status:", response.status);
 
+      // Handle different HTTP status codes
+      if (response.status === 401) {
+        throw new Error("Authentication error. CSRF token might be invalid or missing.");
+      }
+
+      // Get the raw response text first for debugging
+      const responseText = await response.text();
+      console.log("Raw response text:", responseText);
+
+      // Try to parse as JSON
+      let data;
+      try {
+        data = JSON.parse(responseText);
+        console.log("Parsed JSON response:", data);
+      } catch (e) {
+        console.error("Failed to parse response as JSON:", e);
+        throw new Error(`Server returned invalid JSON: ${responseText}`);
+      }
+
+      // Check for success in the parsed data
       if (data.success) {
+        console.log("Registration successful, processing response data");
         token = data.data.token;
-        
+
         // Extract roles properly from JSON response
         let roles = [];
         if (data.data.roles) {
@@ -729,9 +825,9 @@
             roles = Object.values(data.data.roles);
           }
         }
-        
+
         console.log("Parsed roles:", roles);
-        
+
         currentUser = {
           id: data.data.userId,
           username: data.data.username,
@@ -744,9 +840,11 @@
         showMessage('Registered successfully!');
         initializeApp();
       } else {
+        // Handle explicit error message from the server
         throw new Error(data.error || 'Registration failed');
       }
     } catch (error) {
+      console.error("Registration error:", error);
       showMessage(error.message, true);
     } finally {
       button.disabled = false;
@@ -807,6 +905,7 @@
   }
 
   // Load files
+  // Update the loadFiles function to fetch user information
   async function loadFiles() {
     const button = document.getElementById('refresh-button');
     button.disabled = true;
@@ -817,71 +916,40 @@
         throw new Error('Please login first!');
       }
 
-      // First try the standard API endpoint
-      try {
-        const response = await fetch('http://localhost:8080/api/files', {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
+      // First get user mapping (for admins)
+      const userMap = await loadUserNames();
 
-        console.log("Standard API response status:", response.status);
-        
-        if (response.ok) {
-          const responseText = await response.text();
-          console.log("Raw files response (standard endpoint):", responseText);
-          
-          try {
-            const data = JSON.parse(responseText);
-            console.log("Parsed files data (standard endpoint):", data);
-
-            if (data.success && Array.isArray(data.data)) {
-              console.log("Files data to display (standard endpoint):", data.data);
-              displayFiles(data.data);
-              button.disabled = false;
-              button.classList.remove('loading');
-              return;
-            }
-          } catch (parseError) {
-            console.error("Error parsing JSON:", parseError);
-          }
-        }
-      } catch (error) {
-        console.error("Error with standard endpoint, trying fallback:", error);
-      }
-
-      // If that fails, try the db-status endpoint
-      const response = await fetch('http://localhost:8080/api/files/db-status', {
+      // Then get files
+      const response = await fetch('http://localhost:8080/api/files', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`
         }
       });
 
+      console.log("Files response status:", response.status);
+
       const responseText = await response.text();
-      console.log("Raw files response (db-status):", responseText);
-      
+      console.log("Raw files response:", responseText);
+
       try {
         const data = JSON.parse(responseText);
-        console.log("Parsed files data (db-status):", data);
+        console.log("Parsed files data:", data);
 
-        if (data.success) {
-          let filesToDisplay = null;
-          
-          // Check for files array in the proper location in the new response structure
-          if (data.data && Array.isArray(data.data.files)) {
-            filesToDisplay = data.data.files;
-          } else if (data.data && data.data.files) {
-            filesToDisplay = data.data.files;
-          } else if (Array.isArray(data.data)) {
-            filesToDisplay = data.data;
-          } else {
-            filesToDisplay = [];
-          }
-          
-          console.log("Files to display (db-status):", filesToDisplay);
-          displayFiles(filesToDisplay);
+        if (data.success && Array.isArray(data.data)) {
+          // Add username to each file using the userMap
+          const filesWithUsernames = data.data.map(file => {
+            if (file.userId && userMap[file.userId]) {
+              return {
+                ...file,
+                username: userMap[file.userId]
+              };
+            }
+            return file;
+          });
+
+          console.log("Files with usernames:", filesWithUsernames);
+          displayFiles(filesWithUsernames);
         } else {
           throw new Error(data.error || 'Failed to load files');
         }
@@ -898,13 +966,54 @@
     }
   }
 
+  // Add this function to fetch user details for uploaded files (for admin view)
+  async function loadUserNames() {
+    if (!token) return {};
+
+    try {
+      // Only do this for admins
+      if (!currentUser || !currentUser.roles || !currentUser.roles.includes('ADMIN')) {
+        return {};
+      }
+
+      // Get all users (only admins can do this)
+      const response = await fetch('http://localhost:8080/api/auth/users', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const data = await handleResponse(response);
+
+      if (!data.success || !data.data || !data.data.users) {
+        return {};
+      }
+
+      // Create a mapping of user IDs to usernames
+      const userMap = {};
+      const users = Object.values(data.data.users);
+
+      users.forEach(user => {
+        userMap[user.id] = user.username;
+      });
+
+      return userMap;
+    } catch (error) {
+      console.error("Error loading user data:", error);
+      return {};
+    }
+  }
+
   // Display files
   function displayFiles(files) {
     console.log("displayFiles received:", files);
-    console.log("Type of files:", typeof files);
-    console.log("Is Array:", Array.isArray(files));
-    
+
     const filesList = document.getElementById('files-list');
+
+    // Check if user is admin
+    const isAdmin = currentUser && Array.isArray(currentUser.roles) &&
+            currentUser.roles.some(role => role === 'ADMIN');
 
     // If no files or empty array
     if (!files || (Array.isArray(files) && files.length === 0)) {
@@ -946,7 +1055,7 @@
     }
 
     console.log("Processing files array with length:", filesArray.length);
-    
+
     let html = '';
     filesArray.forEach(file => {
       console.log("Processing file:", file);
@@ -955,30 +1064,40 @@
         console.log("Skipping invalid file object:", file);
         return;
       }
-      
+
       const isImage = file.contentType && file.contentType.startsWith('image/');
+
+      // Create HTML for each file card
       html += `
-        <div class="file-card">
-          <div>
-            ${isImage ? `<img src="http://localhost:8080/api/files/${file.id}" alt="${file.fileName}">` : ''}
-            <strong>${file.fileName}</strong>
+          <div class="file-card">
+              <div>
+                  ${isImage ? `<img src="http://localhost:8080/api/files/${file.id}" alt="${file.fileName}">` : ''}
+                  <strong>${file.fileName}</strong>
+              </div>`;
+
+      // If admin, show the username if available, otherwise show user ID
+      if (isAdmin && file.userId) {
+        const displayName = file.username || `User ID: ${file.userId}`;
+        html += `<div>Uploaded by: <span class="file-owner">${displayName}</span></div>`;
+      }
+
+      html += `
+              <div>ID: ${file.id}</div>
+              <div>Type: ${file.contentType || 'Unknown'}</div>
+              <div>Size: ${formatFileSize(file.size || 0)}</div>
+              <div>Uploaded: ${formatDate(file.uploadDate || Date.now())}</div>
+              <div class="file-actions">
+                  <button onclick="window.open('http://localhost:8080/api/files/${file.id}', '_blank')">Download</button>
+                  ${isImage ? `
+                      <button onclick="window.open('http://localhost:8080/api/files/${file.id}/thumbnail', '_blank')">Thumbnail</button>
+                      <button onclick="window.open('http://localhost:8080/api/files/${file.id}/resize?width=300&height=200', '_blank')">Resize</button>
+                  ` : ''}
+                  <button onclick="deleteFile('${file.id}')" style="background-color: #dc3545;">Delete</button>
+              </div>
           </div>
-          <div>ID: ${file.id}</div>
-          <div>Type: ${file.contentType || 'Unknown'}</div>
-          <div>Size: ${formatFileSize(file.size || 0)}</div>
-          <div>Uploaded: ${formatDate(file.uploadDate || Date.now())}</div>
-          <div class="file-actions">
-            <button onclick="window.open('http://localhost:8080/api/files/${file.id}', '_blank')">Download</button>
-            ${isImage ? `
-              <button onclick="window.open('http://localhost:8080/api/files/${file.id}/thumbnail', '_blank')">Thumbnail</button>
-              <button onclick="window.open('http://localhost:8080/api/files/${file.id}/resize?width=300&height=200', '_blank')">Resize</button>
-            ` : ''}
-            <button onclick="deleteFile('${file.id}')" style="background-color: #dc3545;">Delete</button>
-          </div>
-        </div>
       `;
     });
-    
+
     if (html === '') {
       filesList.innerHTML = '<p>No valid files found to display.</p>';
     } else {
@@ -986,6 +1105,117 @@
     }
     console.log("Files display completed");
   }
+
+  // Function to fetch user information
+  async function loadUserNames() {
+    if (!token) return {};
+
+    try {
+      // Only do this for admins
+      if (!currentUser || !currentUser.roles || !currentUser.roles.includes('ADMIN')) {
+        return {};
+      }
+
+      // Get all users (only admins can do this)
+      const response = await fetch('http://localhost:8080/api/auth/users', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const data = await handleResponse(response);
+
+      if (!data.success || !data.data || !data.data.users) {
+        return {};
+      }
+
+      // Create a mapping of user IDs to usernames
+      const userMap = {};
+      const users = Object.values(data.data.users);
+
+      users.forEach(user => {
+        userMap[user.id] = user.username;
+      });
+
+      return userMap;
+    } catch (error) {
+      console.error("Error loading user data:", error);
+      return {};
+    }
+  }
+
+  // Updated loadFiles function
+  async function loadFiles() {
+    const button = document.getElementById('refresh-button');
+    button.disabled = true;
+    button.classList.add('loading');
+
+    try {
+      if (!token) {
+        throw new Error('Please login first!');
+      }
+
+      // First get user mapping (for admins)
+      const userMap = await loadUserNames();
+      console.log("User mapping:", userMap);
+
+      // Then get files
+      const response = await fetch('http://localhost:8080/api/files', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      console.log("Files response status:", response.status);
+
+      const responseText = await response.text();
+      console.log("Raw files response:", responseText);
+
+      try {
+        const data = JSON.parse(responseText);
+        console.log("Parsed files data:", data);
+
+        if (data.success && Array.isArray(data.data)) {
+          // Add username to each file using the userMap
+          const filesWithUsernames = data.data.map(file => {
+            if (file.userId && userMap[file.userId]) {
+              return {
+                ...file,
+                username: userMap[file.userId]
+              };
+            }
+            return file;
+          });
+
+          console.log("Files with usernames:", filesWithUsernames);
+          displayFiles(filesWithUsernames);
+        } else {
+          throw new Error(data.error || 'Failed to load files');
+        }
+      } catch (parseError) {
+        console.error("Error parsing response:", parseError);
+        showMessage("Error loading files: Invalid response from server", true);
+      }
+    } catch (error) {
+      console.error("Error loading files:", error);
+      showMessage(error.message, true);
+    } finally {
+      button.disabled = false;
+      button.classList.remove('loading');
+    }
+  }
+
+  // Add some CSS for styling
+  const styleElement = document.createElement('style');
+  styleElement.textContent = `
+  .file-owner {
+    font-weight: bold;
+    color: #007bff;
+  }
+`;
+  document.head.appendChild(styleElement);
 
   // Delete file
   async function deleteFile(fileId) {
