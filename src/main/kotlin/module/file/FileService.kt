@@ -15,6 +15,8 @@ import java.sql.Connection
 import java.sql.DriverManager
 import java.util.*
 import kotlinx.serialization.Serializable
+import org.anaphygon.config.SecureConfig
+import org.anaphygon.util.ValidationUtils
 
 @Serializable
 data class FileUploadStats(
@@ -172,23 +174,49 @@ class FileService {
         }
     }
 
+    // Replace the existing code that saves files with this version:
     suspend fun saveFile(originalFileName: String, content: ByteArray, userId: String? = null): String {
         val startTime = System.currentTimeMillis()
         val fileId = UUID.randomUUID().toString()
+
+        // Sanitize file name and validate
+        val fileNameValidation = ValidationUtils.validateFileName(originalFileName)
+        if (!fileNameValidation.isValid) {
+            logger.error("Invalid filename: ${fileNameValidation.message}")
+            throw IllegalArgumentException("Invalid filename: ${fileNameValidation.message}")
+        }
+
         val fileExtension = originalFileName.substringAfterLast('.', "")
-        val fileName = if (fileExtension.isNotEmpty()) "$fileId.$fileExtension" else fileId
+        val secureFileName = "$fileId.$fileExtension"
 
         return withContext(Dispatchers.IO) {
             try {
-                // Save file to disk
-                val path = Paths.get(uploadsDir, fileName)
+                // Validate path to prevent traversal attacks
+                val pathValidation = ValidationUtils.validateFilePath(SecureConfig.uploadsDir, secureFileName)
+                if (!pathValidation.isValid) {
+                    throw SecurityException(pathValidation.message)
+                }
+
+                // Save file to disk with secure path resolution
+                val directory = File(SecureConfig.uploadsDir)
+                if (!directory.exists()) {
+                    directory.mkdirs()
+                }
+
+                val path = Paths.get(SecureConfig.uploadsDir, secureFileName).normalize()
+
+                // Double check the normalized path is within uploads directory
+                if (!path.startsWith(Paths.get(SecureConfig.uploadsDir).normalize())) {
+                    throw SecurityException("Path traversal attempt detected")
+                }
+
                 Files.write(path, content)
 
                 // Create metadata object
                 val fileMeta = FileMeta(
                     id = fileId,
                     fileName = originalFileName,
-                    storedFileName = fileName,
+                    storedFileName = secureFileName,
                     contentType = getContentTypeFromFileName(originalFileName),
                     size = content.size.toLong(),
                     uploadDate = System.currentTimeMillis(),
@@ -210,7 +238,6 @@ class FileService {
                 fileId
             } catch (e: Exception) {
                 logger.error("Error saving file: ${e.message}")
-                e.printStackTrace()
                 throw e
             }
         }
@@ -243,6 +270,7 @@ class FileService {
         }
     }
 
+    // Similarly update the getFile method to use secure path resolution:
     suspend fun getFile(fileId: String): FileData? {
         val startTime = System.currentTimeMillis()
         var fileType = "unknown"
@@ -253,11 +281,28 @@ class FileService {
                 val fileMeta = getFileFromDB(fileId)
 
                 if (fileMeta != null) {
+                    // Validate path to prevent traversal attacks
+                    val pathValidation = ValidationUtils.validateFilePath(
+                        SecureConfig.uploadsDir,
+                        fileMeta.storedFileName
+                    )
+
+                    if (!pathValidation.isValid) {
+                        logger.warn("Path validation failed: ${pathValidation.message}")
+                        return@withContext null
+                    }
+
                     // Extract file type for metrics
                     fileType = fileMeta.fileName.substringAfterLast('.', "").lowercase()
 
-                    // Read file from disk using stored filename
-                    val path = Paths.get(uploadsDir, fileMeta.storedFileName)
+                    // Read file from disk using stored filename with secure path resolution
+                    val path = Paths.get(SecureConfig.uploadsDir, fileMeta.storedFileName).normalize()
+
+                    // Double check the normalized path is within uploads directory
+                    if (!path.startsWith(Paths.get(SecureConfig.uploadsDir).normalize())) {
+                        logger.warn("Path traversal attempt detected")
+                        return@withContext null
+                    }
 
                     if (Files.exists(path)) {
                         val content = Files.readAllBytes(path)
@@ -271,31 +316,10 @@ class FileService {
                         null
                     }
                 } else {
-                    // Fallback to filesystem search if not found in DB
-                    val directory = File(uploadsDir)
-                    val files = directory.listFiles { file ->
-                        file.name.startsWith(fileId)
-                    }
-
-                    if (files == null || files.isEmpty()) {
-                        null
-                    } else {
-                        val file = files[0]
-                        val content = Files.readAllBytes(file.toPath())
-
-                        // Extract file type for metrics
-                        fileType = file.name.substringAfterLast('.', "").lowercase()
-
-                        // Record metrics
-                        val duration = System.currentTimeMillis() - startTime
-                        fileMetrics?.recordDownload(fileId, fileType, duration)
-
-                        FileData(file.name, content)
-                    }
+                    null
                 }
             } catch (e: Exception) {
                 logger.error("Error getting file: ${e.message}")
-                e.printStackTrace()
                 null
             }
         }

@@ -5,34 +5,30 @@ import com.auth0.jwt.JWT
 import com.auth0.jwt.JWTVerifier
 import com.auth0.jwt.algorithms.Algorithm
 import org.anaphygon.auth.model.User
+import org.anaphygon.config.SecureConfig
 import org.anaphygon.util.Logger
 import java.util.*
 
-class JwtService(
-    private val secret: String = System.getenv("JWT_SECRET") ?: "default-jwt-secret-change-me-in-production",
-    private val issuer: String = "anaphygon-cdn",
-    private val audience: String = "anaphygon-cdn-users",
-    private val validityInMs: Long = 36_000_00 * 24 // 24 hours
-) {
-    private val algorithm = Algorithm.HMAC256(secret)
+class JwtService {
+    private val algorithm = Algorithm.HMAC256(SecureConfig.jwtSecret)
     private val logger = Logger("JwtService")
 
     val verifier: JWTVerifier = JWT
         .require(algorithm)
-        .withIssuer(issuer)
-        .withAudience(audience)
+        .withIssuer(SecureConfig.jwtIssuer)
+        .withAudience(SecureConfig.jwtAudience)
         .build()
 
     fun generateToken(user: User): String {
         val now = Date()
-        val validity = Date(now.time + validityInMs)
+        val validity = Date(now.time + SecureConfig.jwtExpirationMs)
 
         logger.info("Generating token for user ${user.username} with roles: ${user.roles}")
 
         return JWT.create()
             .withSubject("Authentication")
-            .withIssuer(issuer)
-            .withAudience(audience)
+            .withIssuer(SecureConfig.jwtIssuer)
+            .withAudience(SecureConfig.jwtAudience)
             .withClaim("id", user.id)
             .withClaim("username", user.username)
             .withArrayClaim("roles", user.roles.toTypedArray())

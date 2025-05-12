@@ -5,6 +5,7 @@ import io.ktor.server.application.*
 import org.anaphygon.auth.configureAuth
 import org.anaphygon.auth.service.JwtService
 import org.anaphygon.auth.service.UserRoleService
+import org.anaphygon.config.SecureConfig
 import org.anaphygon.plugin.configureH2Console
 import org.anaphygon.plugin.configureStatic
 import org.anaphygon.config.configureRouting
@@ -17,12 +18,12 @@ fun main(args: Array<String>) {
 }
 
 fun Application.module() {
-    // Create Database connection
+    // Create Database connection with secure config
     val database = Database.connect(
-        url = environment.config.property("database.jdbcURL").getString(),
+        url = SecureConfig.dbUrl,
         driver = environment.config.property("database.driverClassName").getString(),
-        user = "root",
-        password = ""
+        user = SecureConfig.dbUser,
+        password = SecureConfig.dbPassword
     )
 
     // Initialize services
@@ -39,7 +40,7 @@ fun Application.module() {
     
     // 3. Security in correct order
     configureHTTP()  // CORS configuration
-    configureCsrfProtection()
+//    configureCsrfProtection()
     configureRateLimiting()
     configureAuth(jwtService)
     
