@@ -43,6 +43,7 @@ dependencies {
     implementation("io.github.cdimascio:dotenv-kotlin:6.4.1")
     // Add missing bcrypt dependency for password hashing
     implementation("org.mindrot:jbcrypt:0.4")
+    implementation("org.jetbrains.exposed:exposed-java-time:0.41.1") // Use appropriate version
 
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.kotlin.test.junit)

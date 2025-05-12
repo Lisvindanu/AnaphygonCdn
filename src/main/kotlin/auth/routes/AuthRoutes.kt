@@ -1,12 +1,13 @@
 // src/main/kotlin/org/anaphygon/auth/AuthRoutes.kt
-package org.anaphygon.auth
+package org.anaphygon.auth.routes
 
 import io.ktor.http.*
-import io.ktor.server.application.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.serialization.Serializable
+import org.anaphygon.auth.JwtConfig
+import org.anaphygon.auth.UserService
 import org.anaphygon.util.ResponseWrapper
 
 @Serializable
