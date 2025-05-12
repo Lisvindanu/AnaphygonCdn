@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CDN Test Interface</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .navbar {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #ccc;
+    }
+    .navbar a {
+      text-decoration: none;
+      color: #333;
+      font-weight: bold;
+    }
+    .navbar a:hover {
+      color: #007bff;
+    }
+    .container {
+      margin-top: 20px;
+    }
+    .hidden {
+      display: none;
+    }
+    button {
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #0069d9;
+    }
+    input, select {
+      padding: 8px;
+      margin-bottom: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      width: 100%;
+    }
+    .file-card {
+      border: 1px solid #eee;
+      padding: 15px;
+      margin-bottom: 10px;
+      border-radius: 4px;
+    }
+    .file-card img {
+      max-width: 100px;
+      max-height: 100px;
+      margin-right: 10px;
+    }
+    .file-actions {
+      margin-top: 10px;
+    }
+    #statusMessage {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+    }
+    .success {
+      background-color: #d4edda;
+      color: #155724;
+    }
+    .error {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+  </style>
+</head>
+<body>
+<h1>CDN Test Interface</h1>
+
+<div class="navbar">
+  <a href="#" onclick="showSection('login-section')">Login</a>
+  <a href="#" onclick="showSection('register-section')">Register</a>
+  <a href="#" onclick="showSection('upload-section')">Upload File</a>
+  <a href="#" onclick="showSection('files-section')">View Files</a>
+  <a href="#" id="logout-link" onclick="logout()" class="hidden">Logout</a>
+</div>
+
+<div id="statusMessage" class="hidden"></div>
+
+<div id="login-section" class="container">
+  <h2>Login</h2>
+  <form id="login-form">
+    <div>
+      <label for="login-username">Username:</label>
+      <input type="text" id="login-username" required>
+    </div>
+    <div>
+      <label for="login-password">Password:</label>
+      <input type="password" id="login-password" required>
+    </div>
+    <button type="submit">Login</button>
+  </form>
+</div>
+
+<div id="register-section" class="container hidden">
+  <h2>Register</h2>
+  <form id="register-form">
+    <div>
+      <label for="register-username">Username:</label>
+      <input type="text" id="register-username" required>
+    </div>
+    <div>
+      <label for="register-password">Password:</label>
+      <input type="password" id="register-password" required>
+    </div>
+    <button type="submit">Register</button>
+  </form>
+</div>
+
+<div id="upload-section" class="container hidden">
+  <h2>Upload File</h2>
+  <form id="upload-form">
+    <div>
+      <label for="file-input">Select File:</label>
+      <input type="file" id="file-input" required>
+    </div>
+    <button type="submit">Upload</button>
+  </form>
+</div>
+
+<div id="files-section" class="container hidden">
+  <h2>Your Files</h2>
+  <button onclick="loadFiles()">Refresh Files</button>
+  <div id="files-list">
+    <p>Click "Refresh Files" to load your files...</p>
+  </div>
+</div>
+
+<script>
+  // Global variables
+  let token = localStorage.getItem('cdnToken');
+  let csrfToken = '';
+
+  // Check if user is logged in
+  if (token) {
+    document.getElementById('logout-link').classList.remove('hidden');
+    showSection('files-section');
+  } else {
+    showSection('login-section');
+  }
+
+  // Fetch CSRF token
+  function getCsrfToken() {
+    return fetch('http://localhost:8080/api/auth/csrf', {
+      method: 'GET',
+      credentials: 'include'
+    })
+            .then(response => {
+              // Token is set in cookie by server, we just need to get it
+              const cookies = document.cookie.split(';');
+              for (let cookie of cookies) {
+                const [name, value] = cookie.trim().split('=');
+                if (name === 'XSRF-TOKEN') {
+                  csrfToken = value;
+                  return value;
+                }
+              }
+              return null;
+            })
+            .catch(error => {
+              console.error('Error fetching CSRF token:', error);
+              return null;
+            });
+  }
+
+  // Show message to user
+  function showMessage(message, isError = false) {
+    const statusElement = document.getElementById('statusMessage');
+    statusElement.textContent = message;
+    statusElement.classList.remove('hidden', 'success', 'error');
+    statusElement.classList.add(isError ? 'error' : 'success');
+
+    // Hide after 5 seconds
+    setTimeout(() => {
+      statusElement.classList.add('hidden');
+    }, 5000);
+  }
+
+  // Show section and hide others
+  function showSection(sectionId) {
+    const sections = document.querySelectorAll('.container');
+    sections.forEach(section => {
+      section.classList.add('hidden');
+    });
+
+    document.getElementById(sectionId).classList.remove('hidden');
+
+    // If showing files, load them
+    if (sectionId === 'files-section' && token) {
+      loadFiles();
+    }
+  }
+
+  // Login form submission
+  document.getElementById('login-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const username = document.getElementById('login-username').value;
+    const password = document.getElementById('login-password').value;
+
+    try {
+      const response = await fetch('http://localhost:8080/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ username, password }),
+        credentials: 'include'
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        token = data.data.token;
+        localStorage.setItem('cdnToken', token);
+        document.getElementById('logout-link').classList.remove('hidden');
+        showMessage('Logged in successfully!');
+        showSection('files-section');
+      } else {
+        showMessage('Login failed: ' + (data.error || 'Unknown error'), true);
+      }
+    } catch (error) {
+      showMessage('Error: ' + error.message, true);
+    }
+  });
+
+  // Register form submission
+  document.getElementById('register-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const username = document.getElementById('register-username').value;
+    const password = document.getElementById('register-password').value;
+
+    try {
+      const response = await fetch('http://localhost:8080/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ username, password }),
+        credentials: 'include'
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        token = data.data.token;
+        localStorage.setItem('cdnToken', token);
+        document.getElementById('logout-link').classList.remove('hidden');
+        showMessage('Registered successfully!');
+        showSection('files-section');
+      } else {
+        showMessage('Registration failed: ' + (data.error || 'Unknown error'), true);
+      }
+    } catch (error) {
+      showMessage('Error: ' + error.message, true);
+    }
+  });
+
+  // Upload form submission
+  document.getElementById('upload-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    if (!token) {
+      showMessage('Please login first!', true);
+      showSection('login-section');
+      return;
+    }
+
+    const fileInput = document.getElementById('file-input');
+    if (!fileInput.files[0]) {
+      showMessage('Please select a file!', true);
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+
+    try {
+      // Get CSRF token if not already
+      if (!csrfToken) {
+        await getCsrfToken();
+      }
+
+      const response = await fetch('http://localhost:8080/api/files', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'X-XSRF-TOKEN': csrfToken
+        },
+        body: formData,
+        credentials: 'include'
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        showMessage('File uploaded successfully!');
+        fileInput.value = '';
+        showSection('files-section');
+      } else {
+        showMessage('Upload failed: ' + (data.error || 'Unknown error'), true);
+      }
+    } catch (error) {
+      showMessage('Error: ' + error.message, true);
+    }
+  });
+
+  // Load files
+  async function loadFiles() {
+    if (!token) {
+      showMessage('Please login first!', true);
+      showSection('login-section');
+      return;
+    }
+
+    try {
+      const response = await fetch('http://localhost:8080/api/files', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        displayFiles(data.data);
+      } else {
+        showMessage('Failed to load files: ' + (data.error || 'Unknown error'), true);
+      }
+    } catch (error) {
+      showMessage('Error: ' + error.message, true);
+    }
+  }
+
+  // Display files
+  function displayFiles(files) {
+    const filesList = document.getElementById('files-list');
+
+    if (!files || files.length === 0) {
+      filesList.innerHTML = '<p>No files found.</p>';
+      return;
+    }
+
+    let html = '';
+
+    files.forEach(file => {
+      const isImage = file.contentType && file.contentType.startsWith('image/');
+
+      html += `
+                <div class="file-card">
+                    <div>
+                        ${isImage ? `<img src="http://localhost:8080/api/files/${file.id}" alt="${file.fileName}">` : ''}
+                        <strong>${file.fileName}</strong>
+                    </div>
+                    <div>ID: ${file.id}</div>
+                    <div>Type: ${file.contentType}</div>
+                    <div>Size: ${formatFileSize(file.size)}</div>
+                    <div>Uploaded: ${formatDate(file.uploadDate)}</div>
+                    <div class="file-actions">
+                        <button onclick="window.open('http://localhost:8080/api/files/${file.id}', '_blank')">Download</button>
+                        ${isImage ? `
+                        <button onclick="window.open('http://localhost:8080/api/files/${file.id}/thumbnail', '_blank')">Thumbnail</button>
+                        <button onclick="window.open('http://localhost:8080/api/files/${file.id}/resize?width=300&height=200', '_blank')">Resize</button>
+                        ` : ''}
+                        <button onclick="deleteFile('${file.id}')" style="background-color: #dc3545;">Delete</button>
+                    </div>
+                </div>
+                `;
+    });
+
+    filesList.innerHTML = html;
+  }
+
+  // Delete file
+  async function deleteFile(fileId) {
+    if (!token) {
+      showMessage('Please login first!', true);
+      showSection('login-section');
+      return;
+    }
+
+    if (!confirm('Are you sure you want to delete this file?')) {
+      return;
+    }
+
+    try {
+      // Get CSRF token if not already
+      if (!csrfToken) {
+        await getCsrfToken();
+      }
+
+      const response = await fetch(`http://localhost:8080/api/files/${fileId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'X-XSRF-TOKEN': csrfToken
+        },
+        credentials: 'include'
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        showMessage('File deleted successfully!');
+        loadFiles();
+      } else {
+        showMessage('Deletion failed: ' + (data.error || 'Unknown error'), true);
+      }
+    } catch (error) {
+      showMessage('Error: ' + error.message, true);
+    }
+  }
+
+  // Logout
+  function logout() {
+    localStorage.removeItem('cdnToken');
+    token = null;
+    document.getElementById('logout-link').classList.add('hidden');
+    showMessage('Logged out successfully!');
+    showSection('login-section');
+  }
+
+  // Helper function to format file size
+  function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' bytes';
+    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    else if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+    else return (bytes / 1073741824).toFixed(1) + ' GB';
+  }
+
+  // Helper function to format date
+  function formatDate(timestamp) {
+    const date = new Date(timestamp);
+    return date.toLocaleString();
+  }
+
+  // Initial CSRF token fetch
+  getCsrfToken();
+</script>
+</body>
+</html>

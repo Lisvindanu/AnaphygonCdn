@@ -1,35 +1,43 @@
+// src/main/kotlin/org/anaphygon/HTTP.kt
 package org.anaphygon
 
 import io.ktor.http.*
-import io.ktor.resources.*
-import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
-import io.ktor.server.metrics.micrometer.*
-import io.ktor.server.plugins.calllogging.*
-import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.plugins.cors.routing.*
 import io.ktor.server.plugins.defaultheaders.*
-import io.ktor.server.plugins.statuspages.*
-import io.ktor.server.request.*
-import io.ktor.server.resources.*
-import io.ktor.server.response.*
-import io.ktor.server.routing.*
-import io.micrometer.prometheus.*
-import kotlinx.serialization.Serializable
-import org.jetbrains.exposed.sql.*
-import org.slf4j.event.*
 
 fun Application.configureHTTP() {
     install(DefaultHeaders) {
         header("X-Engine", "Ktor") // will send this header with each response
     }
+
     install(CORS) {
-        allowMethod(HttpMethod.Options)
+        // Allow requests from any origin
+        anyHost()
+
+        // Allow common HTTP methods
+        allowMethod(HttpMethod.Get)
+        allowMethod(HttpMethod.Post)
         allowMethod(HttpMethod.Put)
         allowMethod(HttpMethod.Delete)
+        allowMethod(HttpMethod.Options)
         allowMethod(HttpMethod.Patch)
+        allowMethod(HttpMethod.Head)
+
+        // Allow common headers
         allowHeader(HttpHeaders.Authorization)
-        allowHeader("MyCustomHeader")
-        anyHost() // @TODO: Don't do this in production if possible. Try to limit it.
+        allowHeader(HttpHeaders.ContentType)
+        allowHeader(HttpHeaders.Accept)
+        allowHeader("X-XSRF-TOKEN")
+        allowHeader("X-Requested-With")
+
+        // Allow credentials (cookies)
+        allowCredentials = true
+
+        // Allow all request headers
+        allowHeaders { true }
+
+        // Set max age for preflight requests cache
+        maxAgeInSeconds = 3600
     }
 }

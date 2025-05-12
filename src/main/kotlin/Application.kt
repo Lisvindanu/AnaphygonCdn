@@ -1,6 +1,8 @@
+// src/main/kotlin/org/anaphygon/Application.kt
 package org.anaphygon
 
 import io.ktor.server.application.*
+import org.anaphygon.auth.configureAuth
 import org.anaphygon.plugin.configureH2Console
 import org.anaphygon.plugin.configureStatic
 
@@ -9,11 +11,19 @@ fun main(args: Array<String>) {
 }
 
 fun Application.module() {
+    // Configure metrics first to make them available to other modules
     configureMonitoring()
+
     configureSerialization()
     configureDatabases()
     configureHTTP()
+    configureAuth()
     configureRouting()
-    configureStatic() // Pastikan import configureStatic dari package yang benar
+    configureStatic()
     configureH2Console()
+
+    // Log application startup
+    environment.monitor.subscribe(ApplicationStarted) {
+        log.info("Application started successfully")
+    }
 }

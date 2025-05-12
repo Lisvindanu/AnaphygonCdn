@@ -1,9 +1,13 @@
+// src/main/kotlin/org/anaphygon/module/file/FileService.kt
 package org.anaphygon.module.file
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.anaphygon.data.model.FileMeta
+import org.anaphygon.monitoring.FileMetrics
 import org.anaphygon.util.Logger
+import io.ktor.server.application.*
+import org.anaphygon.FILE_METRICS_KEY // Import the key from Monitoring.kt
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -14,6 +18,7 @@ import java.util.*
 class FileService {
     private val uploadsDir = "uploads"
     private val logger = Logger("FileService")
+    private var fileMetrics: FileMetrics? = null
 
     // JDBC Properties
     private val dbUrl = "jdbc:h2:file:./build/cdn_db;CASE_INSENSITIVE_IDENTIFIERS=TRUE"
@@ -31,6 +36,86 @@ class FileService {
         resetDatabase()
     }
 
+    private val imageTransformer = ImageTransformer()
+
+    // Initialize with application for metrics
+    fun initialize(application: Application) {
+        try {
+            fileMetrics = application.attributes[FILE_METRICS_KEY]
+            logger.info("FileService initialized with metrics: ${fileMetrics != null}")
+        } catch (e: Exception) {
+            logger.error("Error initializing metrics: ${e.message}", e)
+        }
+    }
+
+    suspend fun getThumbnail(fileId: String, size: Int = 200): FileData? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val fileMeta = getFileFromDB(fileId)
+
+                if (fileMeta != null && fileMeta.contentType.startsWith("image/")) {
+                    val path = Paths.get(uploadsDir, fileMeta.storedFileName)
+
+                    if (Files.exists(path)) {
+                        val content = Files.readAllBytes(path)
+                        val format = imageTransformer.getFormatFromContentType(fileMeta.contentType)
+                        val thumbnail = imageTransformer.generateThumbnail(content, size, format)
+
+                        if (thumbnail != null) {
+                            // Create a proper name for the thumbnail
+                            val thumbnailName = "thumbnail_${size}_${fileMeta.fileName}"
+                            FileData(thumbnailName, thumbnail)
+                        } else {
+                            null
+                        }
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            } catch (e: Exception) {
+                logger.error("Error generating thumbnail: ${e.message}")
+                e.printStackTrace()
+                null
+            }
+        }
+    }
+
+    suspend fun resizeImage(fileId: String, width: Int, height: Int): FileData? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val fileMeta = getFileFromDB(fileId)
+
+                if (fileMeta != null && fileMeta.contentType.startsWith("image/")) {
+                    val path = Paths.get(uploadsDir, fileMeta.storedFileName)
+
+                    if (Files.exists(path)) {
+                        val content = Files.readAllBytes(path)
+                        val format = imageTransformer.getFormatFromContentType(fileMeta.contentType)
+                        val resized = imageTransformer.resizeImage(content, width, height, format)
+
+                        if (resized != null) {
+                            // Create a proper name for the resized image
+                            val resizedName = "resized_${width}x${height}_${fileMeta.fileName}"
+                            FileData(resizedName, resized)
+                        } else {
+                            null
+                        }
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            } catch (e: Exception) {
+                logger.error("Error resizing image: ${e.message}")
+                e.printStackTrace()
+                null
+            }
+        }
+    }
+
     private fun resetDatabase() {
         try {
             // Ensure H2 driver is loaded
@@ -45,7 +130,7 @@ class FileService {
                 createTable(conn)
             }
         } catch (e: Exception) {
-            println("Error initializing database: ${e.message}")
+            logger.error("Error initializing database: ${e.message}")
             e.printStackTrace()
         }
     }
@@ -53,7 +138,7 @@ class FileService {
     private fun dropTableIfExists(conn: Connection) {
         conn.createStatement().use { stmt ->
             stmt.execute("DROP TABLE IF EXISTS file_meta")
-            println("Dropped existing file_meta table if it existed")
+            logger.info("Dropped existing file_meta table if it existed")
         }
     }
 
@@ -70,11 +155,12 @@ class FileService {
                 )
             """
             stmt.execute(sql)
-            println("Created file_meta table successfully")
+            logger.info("Created file_meta table successfully")
         }
     }
 
     suspend fun saveFile(originalFileName: String, content: ByteArray): String {
+        val startTime = System.currentTimeMillis()
         val fileId = UUID.randomUUID().toString()
         val fileExtension = originalFileName.substringAfterLast('.', "")
         val fileName = if (fileExtension.isNotEmpty()) "$fileId.$fileExtension" else fileId
@@ -96,8 +182,16 @@ class FileService {
                 )
 
                 // Save metadata to database
-                println("Saving file metadata to database: $fileMeta")
+                logger.info("Saving file metadata to database: $fileMeta")
                 saveFileToDB(fileMeta)
+
+                // Record metrics
+                val duration = System.currentTimeMillis() - startTime
+                fileMetrics?.recordUpload(
+                    content.size.toLong(),
+                    duration,
+                    fileExtension.ifEmpty { "unknown" }
+                )
 
                 fileId
             } catch (e: Exception) {
@@ -124,28 +218,39 @@ class FileService {
                     stmt.setLong(6, fileMeta.uploadDate)
 
                     val rows = stmt.executeUpdate()
-                    println("File metadata saved to database successfully: $rows row(s) affected")
+                    logger.info("File metadata saved to database successfully: $rows row(s) affected")
                 }
             }
         } catch (e: Exception) {
-            println("Error saving file metadata to database: ${e.message}")
+            logger.error("Error saving file metadata to database: ${e.message}")
             e.printStackTrace()
             throw e
         }
     }
 
     suspend fun getFile(fileId: String): FileData? {
+        val startTime = System.currentTimeMillis()
+        var fileType = "unknown"
+
         return withContext(Dispatchers.IO) {
             try {
                 // Get file metadata from database
                 val fileMeta = getFileFromDB(fileId)
 
                 if (fileMeta != null) {
+                    // Extract file type for metrics
+                    fileType = fileMeta.fileName.substringAfterLast('.', "").lowercase()
+
                     // Read file from disk using stored filename
                     val path = Paths.get(uploadsDir, fileMeta.storedFileName)
 
                     if (Files.exists(path)) {
                         val content = Files.readAllBytes(path)
+
+                        // Record metrics
+                        val duration = System.currentTimeMillis() - startTime
+                        fileMetrics?.recordDownload(fileId, fileType, duration)
+
                         FileData(fileMeta.fileName, content)
                     } else {
                         null
@@ -162,6 +267,14 @@ class FileService {
                     } else {
                         val file = files[0]
                         val content = Files.readAllBytes(file.toPath())
+
+                        // Extract file type for metrics
+                        fileType = file.name.substringAfterLast('.', "").lowercase()
+
+                        // Record metrics
+                        val duration = System.currentTimeMillis() - startTime
+                        fileMetrics?.recordDownload(fileId, fileType, duration)
+
                         FileData(file.name, content)
                     }
                 }
@@ -196,7 +309,7 @@ class FileService {
                 }
             }
         } catch (e: Exception) {
-            println("Error getting file from database: ${e.message}")
+            logger.error("Error getting file from database: ${e.message}")
             e.printStackTrace()
             return null
         }
@@ -252,12 +365,12 @@ class FileService {
                     stmt.setString(1, fileId)
 
                     val rows = stmt.executeUpdate()
-                    println("File metadata deleted from database: $rows row(s) affected")
+                    logger.info("File metadata deleted from database: $rows row(s) affected")
                     return rows > 0
                 }
             }
         } catch (e: Exception) {
-            println("Error deleting file metadata from database: ${e.message}")
+            logger.error("Error deleting file metadata from database: ${e.message}")
             e.printStackTrace()
             return false
         }
@@ -359,7 +472,7 @@ class FileService {
 
             return result
         } catch (e: Exception) {
-            println("Error getting all files from database: ${e.message}")
+            logger.error("Error getting all files from database: ${e.message}")
             e.printStackTrace()
             return emptyList()
         }

@@ -13,8 +13,11 @@ import kotlinx.coroutines.withContext
 import java.util.*
 
 class FileController(private val fileService: FileService) {
-
+    constructor(fileService: FileService, application: Application) : this(fileService) {
+        fileService.initialize(application)
+    }
     suspend fun uploadFile(call: ApplicationCall) {
+
         try {
             // Receive multipart data
             val multipart = call.receiveMultipart()
@@ -49,17 +52,87 @@ class FileController(private val fileService: FileService) {
     }
 
 
+
+    suspend fun getThumbnail(call: ApplicationCall) {
+        val fileId = call.parameters["id"] ?: return call.respond(HttpStatusCode.BadRequest, ResponseWrapper.error("File ID required"))
+        val size = call.parameters["size"]?.toIntOrNull() ?: 200
+
+        try {
+            val thumbnail = fileService.getThumbnail(fileId, size)
+            if (thumbnail != null) {
+                call.response.header(
+                    HttpHeaders.ContentDisposition,
+                    ContentDisposition.Inline.withParameter(ContentDisposition.Parameters.FileName, thumbnail.fileName).toString()
+                )
+                call.respondBytes(thumbnail.content, ContentType.Image.JPEG)
+            } else {
+                call.respond(HttpStatusCode.NotFound, ResponseWrapper.error("Could not generate thumbnail"))
+            }
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, ResponseWrapper.error(e.message ?: "Unknown error occurred"))
+        }
+    }
+
+    suspend fun resizeImage(call: ApplicationCall) {
+        val fileId = call.parameters["id"] ?: return call.respond(HttpStatusCode.BadRequest, ResponseWrapper.error("File ID required"))
+        val width = call.parameters["width"]?.toIntOrNull() ?: return call.respond(HttpStatusCode.BadRequest, ResponseWrapper.error("Width required"))
+        val height = call.parameters["height"]?.toIntOrNull() ?: return call.respond(HttpStatusCode.BadRequest, ResponseWrapper.error("Height required"))
+
+        try {
+            val resized = fileService.resizeImage(fileId, width, height)
+            if (resized != null) {
+                call.response.header(
+                    HttpHeaders.ContentDisposition,
+                    ContentDisposition.Inline.withParameter(ContentDisposition.Parameters.FileName, resized.fileName).toString()
+                )
+                call.respondBytes(resized.content, ContentType.Image.JPEG)
+            } else {
+                call.respond(HttpStatusCode.NotFound, ResponseWrapper.error("Could not resize image"))
+            }
+        } catch (e: Exception) {
+            call.respond(HttpStatusCode.InternalServerError, ResponseWrapper.error(e.message ?: "Unknown error occurred"))
+        }
+    }
+
+    // src/main/kotlin/org/anaphygon/module/file/FileController.kt
+// Update the getFile method to include caching headers
+
     suspend fun getFile(call: ApplicationCall) {
         val fileId = call.parameters["id"] ?: return call.respond(HttpStatusCode.BadRequest, ResponseWrapper.error("File ID required"))
 
         try {
             val file = fileService.getFile(fileId)
             if (file != null) {
+                // Set content disposition header
                 call.response.header(
                     HttpHeaders.ContentDisposition,
-                    ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, file.fileName).toString()
+                    ContentDisposition.Inline.withParameter(ContentDisposition.Parameters.FileName, file.fileName).toString()
                 )
-                call.respondBytes(file.content, getContentTypeFromFileName(file.fileName))
+
+                // Set caching headers based on content type
+                val contentType = getContentTypeFromFileName(file.fileName)
+
+                // Cache for 7 days for images, 1 day for documents, 1 hour for other content
+                val cacheTimeSeconds = when {
+                    contentType.match(ContentType.Image.Any) -> 60 * 60 * 24 * 7 // 7 days
+                    contentType.contentType == "application" -> 60 * 60 * 24 // 1 day
+                    else -> 60 * 60 // 1 hour
+                }
+
+                call.response.header(HttpHeaders.CacheControl, "max-age=$cacheTimeSeconds, public")
+
+                // Set Last-Modified header
+                val fileInfo = fileService.getFileInfo(fileId)
+                if (fileInfo != null) {
+                    call.response.header(
+                        HttpHeaders.LastModified,
+                        java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME.format(
+                            java.time.Instant.ofEpochMilli(fileInfo.uploadDate).atZone(java.time.ZoneOffset.UTC)
+                        )
+                    )
+                }
+
+                call.respondBytes(file.content, contentType)
             } else {
                 call.respond(HttpStatusCode.NotFound, ResponseWrapper.error("File not found"))
             }

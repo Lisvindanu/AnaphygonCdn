@@ -16,6 +16,12 @@ repositories {
 }
 
 dependencies {
+    // Use direct library references from the catalog
+    implementation("io.ktor:ktor-server-auth:${libs.versions.ktor.version.get()}")
+    implementation("io.ktor:ktor-server-auth-jwt:${libs.versions.ktor.version.get()}")
+    implementation("com.auth0:java-jwt:4.4.0")
+
+
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.metrics.micrometer)
     implementation(libs.micrometer.registry.prometheus)
@@ -35,6 +41,8 @@ dependencies {
     implementation(libs.ktor.server.config.yaml)
     // Added for .env support
     implementation("io.github.cdimascio:dotenv-kotlin:6.4.1")
+    // Add missing bcrypt dependency for password hashing
+    implementation("org.mindrot:jbcrypt:0.4")
 
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.kotlin.test.junit)
