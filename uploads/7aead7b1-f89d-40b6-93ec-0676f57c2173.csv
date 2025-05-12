@@ -1,0 +1,138 @@
+Defect #,Status,Raised By,Tested on Version,TestCase Id,Steps to Reproduce,Expected Results,Actual Results,Priority,Severity
+1,Open,Tom Rick,v1,NC4,1) Enter First character Blank space,"An error message ""First character cannot be space"" must be shown In Name Field","An error message ""Numbers are not allowed"" is shown",Medium,Medium
+2,Open,Tom Rick,v1,NC5,"""1) Do not enter a value in ADDRESS Field
+2) Press TAB and move to next Field""","An error message ""ADDRESS cannot be empty"" must be shown in Address Field",No error message is shown,Medium,Medium
+3,Open,Tom Rick,v1,NC6,1) Enter First character Blank space,"An error message ""First character cannot be space"" must be shown in Address Field",No error message is shown,Medium,Medium
+4,Open,Tom Rick,v1,NC11,1) Enter First character Blank space,"An error message ""First character cannot be space"" must be shown in City Field","An error message ""Numbers are not allowed"" is shown",Medium,Medium
+5,Open,Tom Rick,v1,NC15,1) Enter First character Blank space,"An error message ""First character cannot be space"" must be shown","An error message ""Numbers are not allowed"" is shown",Medium,Medium
+6,Open,Tom Rick,v1,NC20,1) Enter First character Blank space,"An error message ""First character cannot be space"" must be shown","An error message ""Characters are not allowed"" is shown",Medium,Medium
+7,Open,Tom Rick,v1,NC21,1) Enter First character Blank space,"An error message ""PIN cannot have space"" must be shown","An error message ""Characters are not allowed"" is shown",Medium,Medium
+9,Open,Tom Rick,v1,NC24,1) Enter Blank space in Telephone ,"An error message ""Telephone cannot have be space"" must be shown","An error message ""Characters are not allowed"" is shown",Medium,Medium
+8,Open,Tom Rick,v1,NC23,1) Enter First character Blank space,"An error message ""First character cannot be space"" must be shown","An error message ""Characters are not allowed"" is shown",Medium,Medium
+10,Open,Tom Rick,v1,NC29,1) Enter Blank space in Email ,"An error message ""Email-ID is not valid"" must be shown",No error message is shown,Low,Low
+11,Open,Tom Rick,v1,NC30,Cross check Field names with that in SRS,Field names in SRS and system should match,"telephone number will be ""Mobile number""",Medium,Medium
+12,Open,Tom Rick,v1,EC4,"""1) Enter valid Customer id
+2) Submit""",Edit Customer successfully redirect to Edit Customer Page,"""Connection Error is shown """" Warning: mysql_connect() [function.mysql-connect]: Access denied for user 'root'@'localhost' (using password: NO) in /home/demo/public_html/V1/html/editCustomerPage.php on line 3
+could not connect Access denied for user 'root'@'localhost' (using password: NO) """"""",High,High
+13,Open,Tom Rick,v1,EC5,"""1) Do not enter a value in NAME Field
+2) Press TAB and move to next Field""","An error message ""Name cannot be empty"" must be shown",Cannot be executed due to connection issue,High,High
+14,Open,Tom Rick,v1,EC6,1) Enter numeric value in NAME Field,"An error message ""Name cannot contain numbers"" must be shown",Cannot be executed due to connection issue,High,High
+15,Open,Tom Rick,v1,EC7,1) Enter Special Character In NAME Field,"An error message ""Name cannot contain Special Characters"" must be shown",Cannot be executed due to connection issue,High,High
+16,Open,Tom Rick,v1,EC8,"1) Do not enter a value in ADDRESS Field
+2) Press TAB and move to next Field","An error message ""ADDRESS cannot be empty"" must be shown",Cannot be executed due to connection issue,High,High
+17,Open,Tom Rick,v1,EC9,"1) Do not enter a value in CITY Field
+2) Press TAB and move to next Field","An error message ""CITY cannot be empty"" must be shown",Cannot be executed due to connection issue,High,High
+18,Open,Tom Rick,v1,EC10,1) Enter numeric value in CITY Field,"An error message ""City cannot contain Number"" must be shown",Cannot be executed due to connection issue,High,High
+19,Open,Tom Rick,v1,EC11,1) Enter Special Character In CITY Field,"An error message ""City cannot contain Special Characters"" must be shown",Cannot be executed due to connection issue,High,High
+20,Open,Tom Rick,v1,EC12,"1) Do not enter a value in STATE Field
+2) Press TAB and move to next Field","An error message ""STATE cannot be empty"" must be shown",Cannot be executed due to connection issue,High,High
+21,Open,Tom Rick,v1,EC13,1) Enter numeric value in STATE Field,"An error message ""Numbers are not allowed"" must be shown",Cannot be executed due to connection issue,High,High
+22,Open,Tom Rick,v1,EC14,1) Enter Special Character In STATE Field,"An error message ""City cannot contain Special Characters"" must be shown",Cannot be executed due to connection issue,High,High
+23,Open,Tom Rick,v1,EC15,1) Enter character value in PIN  Field,"An error message ""PIN cannot contain character"" must be shown",Cannot be executed due to connection issue,High,High
+24,Open,Tom Rick,v1,EC16,"1) Do not enter a value in PIN Field
+2) Press TAB and move to next Field","An error message ""PIN cannot be empty"" must be shown",Cannot be executed due to connection issue,High,High
+25,Open,Tom Rick,v1,EC17,"1) Enter More than 6 digit in PIN field
+2) Enter Less Than 6 digit in PIN field","An error message ""PIN must contain 6 digit""",Cannot be executed due to connection issue,High,High
+26,Open,Tom Rick,v1,EC18,1) Enter Special Character In PIN Field,"An error message ""PIN cannot contain Special Characters"" must be shown",Cannot be executed due to connection issue,High,High
+27,Open,Tom Rick,v1,EC19,"1) Do not enter a value in Telephone Field
+2) Press TAB and move to next Field","An error message ""Telephone cannot be empty"" must be shown",Cannot be executed due to connection issue,High,High
+28,Open,Tom Rick,v1,EC20,1) Enter Special Character In PIN Field,"An error message ""Telephone cannot contain Special Characters"" must be shown",Cannot be executed due to connection issue,High,High
+29,Open,Tom Rick,v1,EC21,"1) Do not enter a value in Email Field
+2) Press TAB and move to next Field","An error message ""Email cannot be empty"" must be shown",Cannot be executed due to connection issue,High,High
+30,Open,Tom Rick,v1,EC22,Enter invalid email in Email field,"An error message ""Email must be in format example@example.com"" must be shown",Cannot be executed due to connection issue,High,High
+31,Open,Tom Rick,v1,EC23,Enter invalid email in Email field,"An error message ""Email must be in format Example@example.com"" must be shown",Cannot be executed due to connection issue,High,High
+32,Open,Tom Rick,v1,NA2,1) Enter character value in Customer id Field,"An error message ""Customer id must be numeric"" must be shown",No error message is shown,Medium,Medium
+33,Open,Tom Rick,v1,NA3,1) Enter Special Character In Customer id  Field,"An error message ""Customer id  cannot have special character"" must be shown",No error message is shown,Medium,Medium
+34,Open,Tom Rick,v1,NA4,"1) Customer Id cannot have Blank space
+2) Press Tab","An error message ""Customer id cannot have blank space"" must be shown",No error message is shown,Medium,Medium
+35,Open,Tom Rick,v1,NA5,"1) Enter first character space
+2) Press Tab","An error message ""Customer id cannot have first character space"" must be shown",No error message is shown,Medium,Medium
+36,Open,Tom Rick,v1,NA6,"1) Do not enter a value in Initial Deposit Field
+2) Press TAB and move to next Field","An error message ""Initial deposit cannot be empty"" must be shown",No error message is shown,Medium,Medium
+37,Open,Tom Rick,v1,NA7,1) Enter character value in Initial Deposit Field,"An error message ""Initial Deposit must be numeric"" must be shown",No error message is shown,Medium,Medium
+38,Open,Tom Rick,v1,NA8,1) Enter Special Character In Initial Deposit Field,"An error message ""Initial Deposit cannot have special character"" must be shown",No error message is shown,Medium,Medium
+39,Open,Tom Rick,v1,NA9,"1) Initial Deposit cannot have Blank space
+2) Press Tab","An error message ""Initial Deposit cannot have blank space"" must be shown",No error message is shown,Medium,Medium
+40,Open,Tom Rick,v1,NA10,"1) Enter first character space
+2) Press Tab","An error message ""Initial Deposit cannot have first character space"" must be shown",No error message is shown,Medium,Medium
+41,Open,Nick Price,v1,EA4,"1) Enter valid Account Number
+2) Submit",Edit Account successfully redirect to Edit Account Form,"Connection Error is shown  "" Warning: mysql_connect() [function.mysql-connect]: Access denied for user 'root'@'localhost' (using password: NO) in /home/demo/public_html/V1/html/editCustomerPage.php on line 3
+could not connect Access denied for user 'root'@'localhost' (using password: NO) """,High,High
+42,Open,Nick Price,v1,EA7,"1) Do not enter a value in Customer id Field
+2) Press TAB and move to next Field","An error message ""Customer id cannot be empty"" must be shown",Cannot be executed due to connection issue,High,High
+43,Open,Nick Price,v1,EA8,1) Enter character value in Customer id Field,"An error message ""Customer id must be numeric"" must be shown",Cannot be executed due to connection issue,High,High
+44,Open,Nick Price,v1,EA9,1) Enter Special Character In Customer id  Field,"An error message ""Customer id  cannot have special character"" must be shown",Cannot be executed due to connection issue,High,High
+45,Open,Nick Price,v1,EA10,"1) Customer Id cannot have Blank space
+2) Press Tab","An error message ""Customer id cannot have blank space"" must be shown",Cannot be executed due to connection issue,High,High
+46,Open,Nick Price,v1,EA11,"1) Enter first character space
+2) Press Tab","An error message ""Customer id cannot have first character space"" must be shown",Cannot be executed due to connection issue,High,High
+47,Open,Nick Price,v1,EA12,"1) Do not enter a value in Balance Field
+2) Press TAB and move to next Field","An error message ""Balance cannot be empty"" must be shown",Cannot be executed due to connection issue,High,High
+48,Open,Nick Price,v1,EA13,1) Enter character value in Balance Field,"An error message ""Balance must be numeric"" must be shown",Cannot be executed due to connection issue,High,High
+49,Open,Nick Price,v1,EA14,1) Enter Special Character In Balance  Field,"An error message ""Balance cannot have special character"" must be shown",Cannot be executed due to connection issue,High,High
+50,Open,Nick Price,v1,EA15,"1) Balance cannot have Blank space
+2) Press Tab","An error message ""Balance cannot have blank space"" must be shown",Cannot be executed due to connection issue,High,High
+51,Open,Nick Price,v1,EA16,"1) Enter first character space
+2) Press Tab","An error message ""Balance cannot have first character space"" must be shown",Cannot be executed due to connection issue,High,High
+52,Open,Nick Price,v1,DC2,1) Enter Character value in Customer ID Field,"An error message"" Customer ID must be numeric"" must be shown",No error message is shown,Medium,Medium
+53,Open,Nick Price,v1,DC4,"1) Customer ID cannot have Blank space
+2) Press Tab","An error message ""Customer ID cannot have blank space"" must be shown",No error message is shown,Medium,Medium
+54,Open,Nick Price,v1,DC5,"1) Enter first character space
+2) Press Tab","An error message ""Customer ID cannot have first character space"" must be shown",No error message is shown,Medium,Medium
+55,Open,Nick Price,v1,CS4,"1) Account no cannot have Blank space
+2) Press Tab","An error message ""Account no cannot have blank space"" must be shown","An error message ""Characters are not allowed"" must be shown",Medium,Medium
+56,Open,Nick Price,v1,CS6,"1) Do not enter a value in Amount Field
+2) Press TAB and move to next Field","An error message ""Amount Lower Limit cannot be empty"" must be shown",No error message is shown,Medium,Medium
+57,Open,Nick Price,v1,CS7,1) Enter numeric value in Amount Lower Limit number Field,"An error message ""Amount Lower Limit must be numeric"" must be shown",No error message is shown,Medium,Medium
+58,Open,Nick Price,v1,CS8,1) Enter Special Character In Amount Field,"An error message ""Amount Lower Limit cannot have special character"" must be shown",No error message is shown,Medium,Medium
+59,Open,Nick Price,v1,CS9,"1) Amount no cannot have Blank space
+2) Press Tab","An error message ""Amount Lower Limit cannot have blank space"" must be shown",No error message is shown,Medium,Medium
+60,Open,Nick Price,v1,CS10,"1) Enter first character space
+2) Press Tab","An error message ""Amount Lower Limit cannot have first character space"" must be shown",No error message is shown,Medium,Medium
+61,Open,Nick Price,v1,CS11,"1) Do not enter a value in Number of Transaction Field
+2) Press TAB and move to next Field","An error message ""Number of Transaction cannot be empty"" must be shown",No error message is shown,Medium,Medium
+62,Open,Nick Price,v1,CS12,1) Enter character value in Number of Transaction number Field,"An error message ""Number of Transaction must be numeric"" must be shown",No error message is shown,Medium,Medium
+63,Open,Nick Price,v1,CS13,1) Enter Special Character In Number for Transaction Field,"An error message ""Number of Transaction cannot have special character"" must be shown",No error message is shown,Medium,Medium
+64,Open,Nick Price,v1,CS14,"1) Number of transaction cannot have Blank space
+2) Press Tab","An error message ""Number of Transaction cannot have blank space"" must be shown",No error message is shown,Medium,Medium
+65,Open,Nick Price,v1,CS15,"1) Enter first character space
+2) Press Tab","An error message ""Number Of Transaction cannot have first character space"" must be shown",No error message is shown,Medium,Medium
+66,Open,Nick Price,v1,IP1,"1) Enter all required fields
+2) Submit","Message Should be display ""Customer added successfully !!""",Warning: mysql_connect() [function.mysql-connect]: Access denied for user 'root'@'localhost' (using password: NO) in /home/demo/public_html/V1/html/insrtCustomer.php on line 2   Could not connect: Access denied for user 'root'@'localhost' (using password: NO),High,High
+67,Open,Nick Price,v1,IP2,"1) Enter all required field with existing user data
+2) Submit","Message Should be displayed""Email address already exist""",Connection Error,High,High
+68,Open,Nick Price,v1,IP3,"1) Enter all required fields
+2) Submit","Message Should be displayed"" customer records updated successfully!!""",Connection Error,High,High
+69,Open,Nick Price,v1,IP4,"1) Enter all required fields
+2) Submit","Message Should be display"" customer records updated successfully!!""",Connection Error,High,High
+70,Open,Nick Price,v1,IP5,"1) Enter the required fields
+2) Submit","Message Should be display"" You are not authorise to edit this customer!!""",Connection Error,High,High
+71,Open,Nick Price,v1,IP6,"1) Enter all required fields
+2) Submit","Message Should be display "" account
+generated successfully""",Connection Error,High,High
+72,Open,Nick Price,v1,IP7,1) Enter all fields with customer id and account type already exist,"Message Should be display "" account
+generated successfully""",Connection Error,High,High
+73,Open,Nick Price,v1,IP8,"1) Enter Account Number
+2) Submit",Display Generated ministatement ,Connection Error,High,High
+74,Open,Nick Price,v1,IP9,"1) Enter account number
+2) Submit","Message Should be display "" account
+detail successfully updated""",Connection Error,High,High
+75,Open,Nick Price,v1,IP10,"1) Enter all required fields
+2) Submit",Display Generated ministatement ,Connection Error,High,High
+76,Open,Nick Price,v1,IP11,"1) Enter all required fields
+2) Submit","Message Should be display""Account deleted Successfully""",Connection Error,High,High
+77,Open,Nick Price,v1,IP12,"1) Enter all required fields
+2) Submit","Message Should be display""Account does not exist """,Connection Error,High,High
+78,Open,Nick Price,v1,IP13,"1) Enter all required fields
+2) Submit","Message Should be display""Account does not exist """,Connection Error,High,High
+79,Open,Nick Price,v1,IP14,"1)Enter all required field of deleted account
+2)Submit","Message Should be display - ""Account does not exist""",Connection Error,High,High
+80,Open,Nick Price,v1,IP15,"1) Enter all required fields
+2) Submit","Message Should be display""Customer could not be deleted """,Connection Error,High,High
+81,Open,Nick Price,v1,IP16,"1)Enter all required field of deleted account
+2)Submit","Message Should be display""You are not authorise to delete this account """,Connection Error,High,High
+82,Open,Nick Price,v1,IP17,"1) Enter Account Number
+2) Submit",Displayed Generated ministatement ,Connection Error,High,High
+83,Open,Nick Price,v1,IP18,"1) Enter all required fields
+2) Submit",Display Generated Customized statement ,Connection Error,High,High
+84,Open,Nick Price,v1,Exploratory Testing,Check the Name of the Website,Guru99 Bank,Gtpl Bank,High,Low

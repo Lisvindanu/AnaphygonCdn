@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CDN Upload Test</title>
+</head>
+<body>
+<h1>Upload File ke CDN</h1>
+<form id="uploadForm">
+    <input type="file" id="fileInput" name="file" />
+    <button type="submit">Upload</button>
+</form>
+
+<div id="result" style="margin-top: 20px; padding: 10px; border: 1px solid #ddd;">
+    <h3>Response:</h3>
+    <div id="responseContent"></div>
+</div>
+
+<script>
+    document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const fileInput = document.getElementById('fileInput');
+        const resultEl = document.getElementById('responseContent');
+
+        if (!fileInput.files[0]) {
+            resultEl.textContent = 'Please select a file first';
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+
+        resultEl.textContent = 'Uploading...';
+
+        try {
+            const response = await fetch('http://localhost:8080/api/files', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                resultEl.textContent = `Error: ${response.status} ${response.statusText}`;
+                return;
+            }
+
+            const data = await response.json();
+            resultEl.textContent = JSON.stringify(data, null, 2);
+
+            if (data.success) {
+                const fileId = data.data;
+                resultEl.innerHTML = `
+                        <div>Success! File ID: ${fileId}</div>
+                        <div>Download URL: <a href="http://localhost:8080/api/files/${fileId}" target="_blank">Download</a></div>
+                        <div>Info URL: <a href="http://localhost:8080/api/files/${fileId}/info" target="_blank">View Info</a></div>
+                    `;
+            }
+        } catch (error) {
+            resultEl.textContent = 'Error: ' + error.message;
+        }
+    });
+</script>
+</body>
+</html>

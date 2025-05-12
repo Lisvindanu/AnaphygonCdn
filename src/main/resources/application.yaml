@@ -1,0 +1,14 @@
+ktor:
+    deployment:
+        port: 8080
+    application:
+        modules:
+            - org.anaphygon.ApplicationKt.module
+
+storage:
+    uploadsDir: "uploads"
+    maxFileSize: 10485760  # 10MB in bytes
+
+database:
+    driverClassName: "org.h2.Driver"
+    jdbcURL: "jdbc:h2:file:./build/db"
