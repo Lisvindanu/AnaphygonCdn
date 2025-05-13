@@ -34,9 +34,15 @@ object DatabaseFactory {
             // Users and authorization tables are handled by DatabaseInit
             // We only create the file-related tables here
             if (tablesExist) {
-                // Just check for missing columns
-                SchemaUtils.createMissingTablesAndColumns(FileMetaTable)
-                println("File metadata tables checked and updated if needed")
+                // Instead of using createMissingTablesAndColumns, just check for missing columns manually
+                // This avoids constraint conflicts
+                try {
+                    exec("ALTER TABLE file_meta ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT FALSE")
+                    exec("ALTER TABLE file_meta ADD COLUMN IF NOT EXISTS moderation_status VARCHAR(20) DEFAULT 'PENDING'")
+                    println("File metadata table columns checked")
+                } catch (e: Exception) {
+                    println("Error checking file_meta columns: ${e.message}")
+                }
             } else {
                 // Create tables from scratch
                 SchemaUtils.create(FileMetaTable)

@@ -20,7 +20,7 @@ object SecureConfig {
         ?: throw IllegalStateException("JWT_SECRET environment variable is required")
     val jwtIssuer: String = dotenv["JWT_ISSUER"] ?: "anaphygon-cdn"
     val jwtAudience: String = dotenv["JWT_AUDIENCE"] ?: "anaphygon-cdn-users"
-    val jwtExpirationMs: Long = dotenv["JWT_EXPIRATION_MS"]?.toLongOrNull() ?: (36_000_00 * 24)
+    val jwtExpirationMs: Long = dotenv["JWT_EXPIRATION_MS"]?.toLongOrNull() ?: (3600000L * 24 * 7) // 7 days
 
     // File storage config
     val uploadsDir: String = dotenv["UPLOADS_DIR"] ?: "uploads"

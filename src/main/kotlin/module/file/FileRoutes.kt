@@ -10,10 +10,12 @@ import io.ktor.server.routing.*
 import io.ktor.server.request.*
 import org.anaphygon.util.ResponseWrapper
 import io.ktor.util.AttributeKey
+import kotlinx.serialization.json.*
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.add
+import kotlinx.serialization.json.JsonObject
 
 fun Route.fileRoutes() {
     val fileService = FileService()
@@ -49,6 +51,8 @@ fun Route.fileRoutes() {
                                 put("size", file.size)
                                 put("uploadDate", file.uploadDate)
                                 put("userId", file.userId ?: "")
+                                put("isPublic", file.isPublic ?: false)
+                                put("moderationStatus", file.moderationStatus ?: "PENDING")
                             })
                         }
                     })
@@ -111,19 +115,35 @@ fun Route.fileRoutes() {
                     }
 
                     // Get visibility from request body
-                    val request = call.receive<Map<String, Boolean>>()
-                    val isPublic = request["isPublic"] ?: false
+                    val requestText = call.receiveText()
+                    application.log.info("Received visibility request body: $requestText")
+                    
+                    // Parse the JSON manually to avoid serialization issues
+                    val isPublic = try {
+                        val jsonObject = kotlinx.serialization.json.Json.parseToJsonElement(requestText).jsonObject
+                        jsonObject["isPublic"]?.jsonPrimitive?.boolean
+                    } catch (e: Exception) {
+                        application.log.error("Failed to parse request JSON: ${e.message}")
+                        null
+                    } ?: return@patch call.respond(
+                        HttpStatusCode.BadRequest, ResponseWrapper.error("isPublic parameter required")
+                    )
 
+                    // Log detailed information for debugging
+                    application.log.info("Attempting to update visibility for file $fileId to isPublic=$isPublic")
+                    
                     // Update visibility
                     val success = fileService.updateFileVisibility(fileId, isPublic)
 
                     if (success) {
                         call.respond(HttpStatusCode.OK, ResponseWrapper.success("File visibility updated successfully"))
                     } else {
+                        application.log.error("Failed to update visibility for file $fileId")
                         call.respond(HttpStatusCode.InternalServerError, ResponseWrapper.error("Failed to update file visibility"))
                     }
                 } catch (e: Exception) {
-                    call.respond(HttpStatusCode.InternalServerError, ResponseWrapper.error(e.message ?: "Error updating file visibility"))
+                    application.log.error("Error updating file visibility: ${e.message}", e)
+                    call.respond(HttpStatusCode.InternalServerError, ResponseWrapper.error("Error updating file visibility: ${e.message}"))
                 }
             }
 
@@ -144,8 +164,17 @@ fun Route.fileRoutes() {
                     }
 
                     // Get status from request body
-                    val request = call.receive<Map<String, String>>()
-                    val status = request["status"] ?: return@patch call.respond(
+                    val requestText = call.receiveText()
+                    application.log.info("Received moderation request body: $requestText")
+                    
+                    // Parse the JSON manually to avoid serialization issues
+                    val status = try {
+                        val jsonObject = kotlinx.serialization.json.Json.parseToJsonElement(requestText).jsonObject
+                        jsonObject["status"]?.jsonPrimitive?.content
+                    } catch (e: Exception) {
+                        application.log.error("Failed to parse request JSON: ${e.message}")
+                        null
+                    } ?: return@patch call.respond(
                         HttpStatusCode.BadRequest, ResponseWrapper.error("Status required")
                     )
 
@@ -155,16 +184,21 @@ fun Route.fileRoutes() {
                         return@patch
                     }
 
+                    // Log detailed information for debugging
+                    application.log.info("Attempting to moderate file $fileId with status $status")
+                    
                     // Update moderation status
                     val success = fileService.moderateFile(fileId, status)
 
                     if (success) {
                         call.respond(HttpStatusCode.OK, ResponseWrapper.success("File moderation status updated successfully"))
                     } else {
+                        application.log.error("Failed to update moderation status for file $fileId")
                         call.respond(HttpStatusCode.InternalServerError, ResponseWrapper.error("Failed to update moderation status"))
                     }
                 } catch (e: Exception) {
-                    call.respond(HttpStatusCode.InternalServerError, ResponseWrapper.error(e.message ?: "Error updating moderation status"))
+                    application.log.error("Error updating moderation status: ${e.message}", e)
+                    call.respond(HttpStatusCode.InternalServerError, ResponseWrapper.error("Error updating moderation status: ${e.message}"))
                 }
             }
 
@@ -240,6 +274,7 @@ fun Route.fileRoutes() {
                         put("data", buildJsonObject {
                             put("database_status", "connected")
                             put("file_count", filesFromDB.size)
+                            put("schema_info", convertMapToJsonObject(fileService.getDatabaseSchemaInfo()))
                             put("files", buildJsonArray {
                                 filesFromDB.forEach { file ->
                                     add(buildJsonObject {
@@ -278,6 +313,60 @@ fun Route.fileRoutes() {
 
                 get("/{userId}") {
                     fileController.getFileUploadStats(call)
+                }
+            }
+
+            // Direct moderation endpoint for testing
+            get("/test-moderate/{id}/{status}") {
+                val principal = call.principal<JWTPrincipal>()
+                val roles = principal?.payload?.getClaim("roles")?.asList(String::class.java) ?: emptyList()
+
+                if (!roles.contains("ADMIN")) {
+                    call.respond(HttpStatusCode.Forbidden, ResponseWrapper.error("Admin access required"))
+                    return@get
+                }
+
+                val fileId = call.parameters["id"] ?: return@get call.respond(
+                    HttpStatusCode.BadRequest, ResponseWrapper.error("File ID required")
+                )
+                
+                val status = call.parameters["status"] ?: return@get call.respond(
+                    HttpStatusCode.BadRequest, ResponseWrapper.error("Status required")
+                )
+                
+                if (status !in listOf("APPROVED", "REJECTED", "PENDING")) {
+                    call.respond(HttpStatusCode.BadRequest, ResponseWrapper.error("Invalid status. Must be APPROVED, REJECTED, or PENDING"))
+                    return@get
+                }
+                
+                try {
+                    // First check if file exists
+                    val fileInfo = fileService.getFileInfo(fileId)
+                    if (fileInfo == null) {
+                        application.log.error("Test moderation: File $fileId not found")
+                        call.respond(HttpStatusCode.NotFound, ResponseWrapper.error("File not found"))
+                        return@get
+                    }
+                    
+                    application.log.info("Test moderation: File found: $fileInfo")
+                    application.log.info("Test moderation: Attempting to moderate file $fileId with status $status")
+                    
+                    // Get database schema info for debugging
+                    val schemaInfo = fileService.getDatabaseSchemaInfo()
+                    application.log.info("Database schema info: $schemaInfo")
+                    
+                    val success = fileService.moderateFile(fileId, status)
+                    
+                    if (success) {
+                        application.log.info("Test moderation: Successfully updated moderation status")
+                        call.respond(HttpStatusCode.OK, ResponseWrapper.success("File moderation status updated successfully"))
+                    } else {
+                        application.log.error("Test moderation: Failed to update moderation status for file $fileId")
+                        call.respond(HttpStatusCode.InternalServerError, ResponseWrapper.error("Failed to update moderation status"))
+                    }
+                } catch (e: Exception) {
+                    application.log.error("Test moderation: Error updating moderation status: ${e.message}", e)
+                    call.respond(HttpStatusCode.InternalServerError, ResponseWrapper.error("Error updating moderation status: ${e.message}"))
                 }
             }
 
@@ -388,6 +477,129 @@ fun Route.fileRoutes() {
                         ResponseWrapper.error("Error retrieving file info: ${e.message}")
                     )
                 }
+            }
+
+            // Direct SQL moderation endpoint for emergency use
+            get("/sql-moderate/{id}/{status}") {
+                val principal = call.principal<JWTPrincipal>()
+                val roles = principal?.payload?.getClaim("roles")?.asList(String::class.java) ?: emptyList()
+
+                if (!roles.contains("ADMIN")) {
+                    call.respond(HttpStatusCode.Forbidden, ResponseWrapper.error("Admin access required"))
+                    return@get
+                }
+
+                val fileId = call.parameters["id"] ?: return@get call.respond(
+                    HttpStatusCode.BadRequest, ResponseWrapper.error("File ID required")
+                )
+                
+                val status = call.parameters["status"] ?: return@get call.respond(
+                    HttpStatusCode.BadRequest, ResponseWrapper.error("Status required")
+                )
+                
+                if (status !in listOf("APPROVED", "REJECTED", "PENDING")) {
+                    call.respond(HttpStatusCode.BadRequest, ResponseWrapper.error("Invalid status. Must be APPROVED, REJECTED, or PENDING"))
+                    return@get
+                }
+                
+                try {
+                    application.log.info("SQL moderation: Attempting to moderate file $fileId with status $status")
+                    
+                    // Execute direct SQL update
+                    val result = fileService.executeDirectSqlModeration(fileId, status)
+                    
+                    call.respond(HttpStatusCode.OK, ResponseWrapper.success(
+                        "SQL moderation result: $result"
+                    ))
+                } catch (e: Exception) {
+                    application.log.error("SQL moderation: Error updating moderation status: ${e.message}", e)
+                    call.respond(HttpStatusCode.InternalServerError, ResponseWrapper.error("Error updating moderation status: ${e.message}"))
+                }
+            }
+
+            // Direct SQL visibility update endpoint for emergency use
+            get("/test-visibility/{id}/{isPublic}") {
+                val principal = call.principal<JWTPrincipal>()
+                val roles = principal?.payload?.getClaim("roles")?.asList(String::class.java) ?: emptyList()
+                val userId = principal?.payload?.getClaim("id")?.asString()
+
+                val fileId = call.parameters["id"] ?: return@get call.respond(
+                    HttpStatusCode.BadRequest, ResponseWrapper.error("File ID required")
+                )
+                
+                val isPublic = call.parameters["isPublic"]?.toBoolean() ?: return@get call.respond(
+                    HttpStatusCode.BadRequest, ResponseWrapper.error("isPublic parameter required (true/false)")
+                )
+                
+                try {
+                    // Get file to check ownership
+                    val file = fileService.getFileInfo(fileId)
+
+                    if (file == null) {
+                        call.respond(HttpStatusCode.NotFound, ResponseWrapper.error("File not found"))
+                        return@get
+                    }
+
+                    // Verify owner or admin
+                    val isAdmin = roles.contains("ADMIN")
+                    val isOwner = file.userId == userId
+
+                    if (!isAdmin && !isOwner) {
+                        call.respond(HttpStatusCode.Forbidden, ResponseWrapper.error("You don't have permission to modify this file"))
+                        return@get
+                    }
+                    
+                    application.log.info("Test visibility: Attempting to update visibility for file $fileId to isPublic=$isPublic")
+                    
+                    // Update visibility
+                    val success = fileService.updateFileVisibility(fileId, isPublic)
+                    
+                    if (success) {
+                        application.log.info("Test visibility: Successfully updated visibility")
+                        call.respond(HttpStatusCode.OK, ResponseWrapper.success("File visibility updated successfully"))
+                    } else {
+                        application.log.error("Test visibility: Failed to update visibility for file $fileId")
+                        call.respond(HttpStatusCode.InternalServerError, ResponseWrapper.error("Failed to update file visibility"))
+                    }
+                } catch (e: Exception) {
+                    application.log.error("Test visibility: Error updating visibility: ${e.message}", e)
+                    call.respond(HttpStatusCode.InternalServerError, ResponseWrapper.error("Error updating file visibility: ${e.message}"))
+                }
+            }
+        }
+    }
+}
+
+private fun convertMapToJsonObject(map: Map<String, Any>): JsonObject {
+    return buildJsonObject {
+        map.forEach { (key, value) ->
+            when (value) {
+                is String -> put(key, value)
+                is Number -> put(key, value)
+                is Boolean -> put(key, value)
+                is Map<*, *> -> {
+                    @Suppress("UNCHECKED_CAST")
+                    put(key, convertMapToJsonObject(value as Map<String, Any>))
+                }
+                is List<*> -> {
+                    put(key, buildJsonArray {
+                        value.forEach { item ->
+                            when (item) {
+                                is String -> add(item)
+                                is Number -> add(item)
+                                is Boolean -> add(item)
+                                is Map<*, *> -> {
+                                    @Suppress("UNCHECKED_CAST")
+                                    add(convertMapToJsonObject(item as Map<String, Any>))
+                                }
+                                null -> add(JsonNull)
+                                else -> add(item.toString())
+                            }
+                        }
+                    })
+                }
+                null -> put(key, JsonNull)
+                else -> put(key, value.toString())
             }
         }
     }

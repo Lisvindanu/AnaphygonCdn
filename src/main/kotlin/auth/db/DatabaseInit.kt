@@ -85,15 +85,9 @@ object DatabaseInit {
                     logger.warn("Note: ${e.message}")
                 }
 
-                // Just create tables if they don't exist
-                SchemaUtils.createMissingTablesAndColumns(
-                    UsersTable,
-                    RolesTable,
-                    UserRolesTable,
-                    PermissionsTable,
-                    RolePermissionsTable,
-                    TokensTable
-                )
+                // Skip the automatic schema validation since tables already exist
+                // This avoids the constraint conflicts
+                logger.info("Skipping schema validation for existing tables")
                 
                 return@transaction
             }

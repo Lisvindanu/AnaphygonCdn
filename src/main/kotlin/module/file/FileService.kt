@@ -42,7 +42,7 @@ class FileService {
     private var fileMetrics: FileMetrics? = null
 
     // JDBC Properties
-    private val dbUrl = "jdbc:h2:file:./build/cdn_db;CASE_INSENSITIVE_IDENTIFIERS=TRUE"
+    private val dbUrl = "jdbc:h2:file:./data/cdn_db;CASE_INSENSITIVE_IDENTIFIERS=TRUE"
     private val dbUser = "root"
     private val dbPassword = ""
 
@@ -109,7 +109,9 @@ class FileService {
                     content_type VARCHAR(100) NOT NULL,
                     file_size BIGINT NOT NULL,
                     upload_date BIGINT NOT NULL,
-                    user_id VARCHAR(36)
+                    user_id VARCHAR(36),
+                    is_public BOOLEAN DEFAULT FALSE,
+                    moderation_status VARCHAR(20) DEFAULT 'PENDING'
                 )
             """
             stmt.execute(sql)
@@ -118,66 +120,184 @@ class FileService {
     }
 
     suspend fun getPublicFiles(page: Int = 1, pageSize: Int = 20): List<FileMeta> {
-        return DatabaseFactory.dbQuery {
-            FileMetaTable.selectAll()
-                .where { (FileMetaTable.isPublic eq true) and (FileMetaTable.moderationStatus eq "APPROVED") }
-                .orderBy(FileMetaTable.uploadDate, SortOrder.DESC)
-                .limit(pageSize).offset(start = ((page - 1) * pageSize).toLong())
-                .map { FileMetaTable.toFileMeta(it) }
+        return withContext(Dispatchers.IO) {
+            try {
+                val result = mutableListOf<FileMeta>()
+                val offset = (page - 1) * pageSize
+                
+                DriverManager.getConnection(dbUrl, dbUser, dbPassword).use { conn ->
+                    val sql = """
+                        SELECT * FROM file_meta 
+                        WHERE is_public = TRUE AND moderation_status = 'APPROVED' 
+                        ORDER BY upload_date DESC 
+                        LIMIT ? OFFSET ?
+                    """
+                    conn.prepareStatement(sql).use { stmt ->
+                        stmt.setInt(1, pageSize)
+                        stmt.setInt(2, offset)
+                        
+                        stmt.executeQuery().use { rs ->
+                            while (rs.next()) {
+                                result.add(
+                                    FileMeta(
+                                        id = rs.getString("id"),
+                                        fileName = rs.getString("file_name"),
+                                        storedFileName = rs.getString("stored_file_name"),
+                                        contentType = rs.getString("content_type"),
+                                        size = rs.getLong("file_size"),
+                                        uploadDate = rs.getLong("upload_date"),
+                                        userId = rs.getString("user_id"),
+                                        isPublic = rs.getBoolean("is_public"),
+                                        moderationStatus = rs.getString("moderation_status")
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+                
+                logger.info("Found ${result.size} public files")
+                result
+            } catch (e: Exception) {
+                logger.error("Error getting public files: ${e.message}")
+                e.printStackTrace()
+                emptyList()
+            }
         }
     }
 
     // Update the visibility of a file
     suspend fun updateFileVisibility(fileId: String, isPublic: Boolean): Boolean {
-        return DatabaseFactory.dbQuery {
-            val updatedRows = FileMetaTable.update({ FileMetaTable.id eq fileId }) {
-                it[FileMetaTable.isPublic] = isPublic
-                it[FileMetaTable.moderationStatus] = "PENDING" // Reset moderation when visibility changes
+        return withContext(Dispatchers.IO) {
+            try {
+                logger.info("Updating visibility for file $fileId to isPublic=$isPublic")
+                
+                // First check if the file exists
+                val fileExists = checkFileExists(fileId)
+                if (!fileExists) {
+                    logger.error("Cannot update visibility for file $fileId - file not found")
+                    return@withContext false
+                }
+                
+                // Ensure is_public column exists
+                ensureIsPublicColumnExists()
+                
+                // Use direct SQL for more reliable execution
+                DriverManager.getConnection(dbUrl, dbUser, dbPassword).use { conn ->
+                    val sql = "UPDATE file_meta SET is_public = ?, moderation_status = 'PENDING' WHERE id = ?"
+                    conn.prepareStatement(sql).use { stmt ->
+                        stmt.setBoolean(1, isPublic)
+                        stmt.setString(2, fileId)
+
+                        val rows = stmt.executeUpdate()
+                        logger.info("File visibility updated: $rows row(s) affected")
+                        return@withContext rows > 0
+                    }
+                }
+            } catch (e: Exception) {
+                logger.error("Error updating file visibility: ${e.message}", e)
+                return@withContext false
             }
-            updatedRows > 0
         }
     }
 
-//    suspend fun moderateFile(fileId: String, status: String): Boolean {
-//        return DatabaseFactory.dbQuery {
-//            val updatedRows = FileMetaTable.update({ FileMetaTable.id eq fileId }) {
-//                it[FileMetaTable.moderationStatus] = status
-//            }
-//            updatedRows > 0
-//        }
-//    }
-
-    // Add this as an alternative implementation in your FileService.kt
-    suspend fun moderateFile(fileId: String, status: String): Boolean {
-        return try {
-            // First try with Exposed
-            DatabaseFactory.dbQuery {
-                val updatedRows = FileMetaTable.update({ FileMetaTable.id eq fileId }) {
-                    it[FileMetaTable.moderationStatus] = status
+    private fun ensureIsPublicColumnExists() {
+        try {
+            DriverManager.getConnection(dbUrl, dbUser, dbPassword).use { conn ->
+                // Check if is_public column exists
+                val metaData = conn.metaData
+                val rs = metaData.getColumns(null, null, "FILE_META", "IS_PUBLIC")
+                
+                if (!rs.next()) {
+                    // Column doesn't exist, create it
+                    logger.info("Adding missing is_public column to file_meta table")
+                    val sql = "ALTER TABLE file_meta ADD COLUMN is_public BOOLEAN DEFAULT FALSE"
+                    conn.createStatement().use { stmt ->
+                        stmt.executeUpdate(sql)
+                    }
+                } else {
+                    logger.info("is_public column already exists")
                 }
-                updatedRows > 0
             }
         } catch (e: Exception) {
-            // Fallback to direct SQL if the Exposed method fails
-            withContext(Dispatchers.IO) {
-                try {
-                    DriverManager.getConnection(dbUrl, dbUser, dbPassword).use { conn ->
-                        val sql = "UPDATE file_meta SET moderation_status = ? WHERE id = ?"
-                        conn.prepareStatement(sql).use { stmt ->
-                            stmt.setString(1, status)
-                            stmt.setString(2, fileId)
+            logger.error("Error ensuring is_public column exists: ${e.message}")
+        }
+    }
 
-                            val rows = stmt.executeUpdate()
-                            logger.info("File moderation status updated: $rows row(s) affected")
-                            rows > 0
+    suspend fun moderateFile(fileId: String, status: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                logger.info("Moderating file $fileId with status $status")
+                
+                // First check if the file exists
+                val fileExists = checkFileExists(fileId)
+                if (!fileExists) {
+                    logger.error("Cannot moderate file $fileId - file not found")
+                    return@withContext false
+                }
+                
+                // Check if moderation_status column exists
+                ensureModerationColumnExists()
+                
+                // Use direct SQL for more reliable execution
+                DriverManager.getConnection(dbUrl, dbUser, dbPassword).use { conn ->
+                    val sql = "UPDATE file_meta SET moderation_status = ? WHERE id = ?"
+                    conn.prepareStatement(sql).use { stmt ->
+                        stmt.setString(1, status)
+                        stmt.setString(2, fileId)
+
+                        val rows = stmt.executeUpdate()
+                        logger.info("File moderation status updated: $rows row(s) affected")
+                        return@withContext rows > 0
+                    }
+                }
+            } catch (e: Exception) {
+                logger.error("Error updating moderation status: ${e.message}", e)
+                return@withContext false
+            }
+        }
+    }
+
+    private fun checkFileExists(fileId: String): Boolean {
+        try {
+            DriverManager.getConnection(dbUrl, dbUser, dbPassword).use { conn ->
+                val sql = "SELECT COUNT(*) FROM file_meta WHERE id = ?"
+                conn.prepareStatement(sql).use { stmt ->
+                    stmt.setString(1, fileId)
+                    stmt.executeQuery().use { rs ->
+                        if (rs.next()) {
+                            return rs.getInt(1) > 0
                         }
                     }
-                } catch (e: Exception) {
-                    logger.error("Error updating moderation status: ${e.message}")
-                    e.printStackTrace()
-                    false
                 }
             }
+            return false
+        } catch (e: Exception) {
+            logger.error("Error checking if file exists: ${e.message}")
+            return false
+        }
+    }
+
+    private fun ensureModerationColumnExists() {
+        try {
+            DriverManager.getConnection(dbUrl, dbUser, dbPassword).use { conn ->
+                // Check if moderation_status column exists
+                val metaData = conn.metaData
+                val rs = metaData.getColumns(null, null, "FILE_META", "MODERATION_STATUS")
+                
+                if (!rs.next()) {
+                    // Column doesn't exist, create it
+                    logger.info("Adding missing moderation_status column to file_meta table")
+                    val sql = "ALTER TABLE file_meta ADD COLUMN moderation_status VARCHAR(20) DEFAULT 'PENDING'"
+                    conn.createStatement().use { stmt ->
+                        stmt.executeUpdate(sql)
+                    }
+                } else {
+                    logger.info("moderation_status column already exists")
+                }
+            }
+        } catch (e: Exception) {
+            logger.error("Error ensuring moderation column exists: ${e.message}")
         }
     }
 
@@ -236,7 +356,9 @@ class FileService {
                                         contentType = rs.getString("content_type"),
                                         size = rs.getLong("file_size"),
                                         uploadDate = rs.getLong("upload_date"),
-                                        userId = rs.getString("user_id")
+                                        userId = rs.getString("user_id"),
+                                        isPublic = try { rs.getBoolean("is_public") } catch (e: Exception) { false },
+                                        moderationStatus = try { rs.getString("moderation_status") } catch (e: Exception) { "PENDING" }
                                     )
                                 )
                             }
@@ -361,8 +483,8 @@ class FileService {
         try {
             DriverManager.getConnection(dbUrl, dbUser, dbPassword).use { conn ->
                 val sql = """
-                    INSERT INTO file_meta (id, file_name, stored_file_name, content_type, file_size, upload_date, user_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO file_meta (id, file_name, stored_file_name, content_type, file_size, upload_date, user_id, is_public, moderation_status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """
                 conn.prepareStatement(sql).use { stmt ->
                     stmt.setString(1, fileMeta.id)
@@ -372,6 +494,8 @@ class FileService {
                     stmt.setLong(5, fileMeta.size)
                     stmt.setLong(6, fileMeta.uploadDate)
                     stmt.setString(7, fileMeta.userId)
+                    stmt.setBoolean(8, fileMeta.isPublic ?: false)
+                    stmt.setString(9, fileMeta.moderationStatus ?: "PENDING")
 
                     val rows = stmt.executeUpdate()
                     logger.info("File metadata saved to database successfully: $rows row(s) affected")
@@ -455,7 +579,9 @@ class FileService {
                                 contentType = rs.getString("content_type"),
                                 size = rs.getLong("file_size"),
                                 uploadDate = rs.getLong("upload_date"),
-                                userId = rs.getString("user_id")
+                                userId = rs.getString("user_id"),
+                                isPublic = try { rs.getBoolean("is_public") } catch (e: Exception) { false },
+                                moderationStatus = try { rs.getString("moderation_status") } catch (e: Exception) { "PENDING" }
                             )
                         }
                         return null
@@ -617,7 +743,9 @@ class FileService {
                                     contentType = rs.getString("content_type"),
                                     size = rs.getLong("file_size"), // Note: Column is file_size but property is size
                                     uploadDate = rs.getLong("upload_date"),
-                                    userId = rs.getString("user_id")
+                                    userId = rs.getString("user_id"),
+                                    isPublic = try { rs.getBoolean("is_public") } catch (e: Exception) { false },
+                                    moderationStatus = try { rs.getString("moderation_status") } catch (e: Exception) { "PENDING" }
                                 )
                             )
                         }
@@ -796,6 +924,131 @@ class FileService {
                 e.printStackTrace()
                 emptyList()
             }
+        }
+    }
+
+    fun getDatabaseSchemaInfo(): Map<String, Any> {
+        val schemaInfo = mutableMapOf<String, Any>()
+        
+        try {
+            DriverManager.getConnection(dbUrl, dbUser, dbPassword).use { conn ->
+                val metaData = conn.metaData
+                
+                // Get table information
+                val tables = mutableListOf<Map<String, String>>()
+                val tableRs = metaData.getTables(null, null, null, arrayOf("TABLE"))
+                while (tableRs.next()) {
+                    val tableName = tableRs.getString("TABLE_NAME")
+                    tables.add(mapOf("name" to tableName))
+                }
+                schemaInfo["tables"] = tables
+                
+                // Get file_meta columns
+                val columns = mutableListOf<Map<String, String>>()
+                val columnRs = metaData.getColumns(null, null, "FILE_META", null)
+                while (columnRs.next()) {
+                    val columnName = columnRs.getString("COLUMN_NAME")
+                    val dataType = columnRs.getString("TYPE_NAME")
+                    val nullable = columnRs.getString("IS_NULLABLE")
+                    columns.add(mapOf(
+                        "name" to columnName,
+                        "type" to dataType,
+                        "nullable" to nullable
+                    ))
+                }
+                schemaInfo["file_meta_columns"] = columns
+                
+                // Check if specific columns exist
+                schemaInfo["has_is_public"] = columns.any { it["name"]?.equals("IS_PUBLIC", ignoreCase = true) == true }
+                schemaInfo["has_moderation_status"] = columns.any { it["name"]?.equals("MODERATION_STATUS", ignoreCase = true) == true }
+                
+                // Try to query a file to see column values
+                try {
+                    val sampleFile = getAllFilesFromDB().firstOrNull()
+                    if (sampleFile != null) {
+                        schemaInfo["sample_file"] = mapOf(
+                            "id" to sampleFile.id,
+                            "isPublic" to (sampleFile.isPublic ?: false),
+                            "moderationStatus" to (sampleFile.moderationStatus ?: "PENDING")
+                        )
+                    }
+                } catch (e: Exception) {
+                    schemaInfo["sample_file_error"] = e.message ?: "Unknown error"
+                }
+            }
+        } catch (e: Exception) {
+            logger.error("Error getting database schema info: ${e.message}")
+            schemaInfo["error"] = e.message ?: "Unknown error"
+        }
+        
+        return schemaInfo
+    }
+
+    fun executeDirectSqlModeration(fileId: String, status: String): String {
+        try {
+            logger.info("Executing direct SQL moderation for file $fileId with status $status")
+            
+            // First check if the file exists
+            val fileExists = checkFileExists(fileId)
+            if (!fileExists) {
+                return "File not found: $fileId"
+            }
+            
+            // Try to execute the SQL directly
+            val result = StringBuilder()
+            
+            DriverManager.getConnection(dbUrl, dbUser, dbPassword).use { conn ->
+                // First check the table structure
+                val metaData = conn.metaData
+                val columns = mutableListOf<String>()
+                val rs = metaData.getColumns(null, null, "FILE_META", null)
+                while (rs.next()) {
+                    columns.add(rs.getString("COLUMN_NAME"))
+                }
+                result.append("Columns found: $columns\n")
+                
+                // Check if moderation_status column exists
+                if (!columns.any { it.equals("MODERATION_STATUS", ignoreCase = true) }) {
+                    // Try to add the column
+                    try {
+                        conn.createStatement().use { stmt ->
+                            stmt.executeUpdate("ALTER TABLE file_meta ADD COLUMN moderation_status VARCHAR(20) DEFAULT 'PENDING'")
+                            result.append("Added missing moderation_status column\n")
+                        }
+                    } catch (e: Exception) {
+                        result.append("Failed to add moderation_status column: ${e.message}\n")
+                    }
+                }
+                
+                // Execute the update
+                conn.prepareStatement("UPDATE file_meta SET moderation_status = ? WHERE id = ?").use { stmt ->
+                    stmt.setString(1, status)
+                    stmt.setString(2, fileId)
+                    
+                    val rowsAffected = stmt.executeUpdate()
+                    result.append("Update executed. Rows affected: $rowsAffected\n")
+                    
+                    if (rowsAffected > 0) {
+                        // Verify the update
+                        conn.prepareStatement("SELECT moderation_status FROM file_meta WHERE id = ?").use { verifyStmt ->
+                            verifyStmt.setString(1, fileId)
+                            verifyStmt.executeQuery().use { verifyRs ->
+                                if (verifyRs.next()) {
+                                    val currentStatus = verifyRs.getString("moderation_status")
+                                    result.append("Current status after update: $currentStatus\n")
+                                } else {
+                                    result.append("Could not verify update - file not found after update\n")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            return result.toString()
+        } catch (e: Exception) {
+            logger.error("Error in direct SQL moderation: ${e.message}", e)
+            return "Error: ${e.message}\n${e.stackTraceToString()}"
         }
     }
 }
